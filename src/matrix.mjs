@@ -1071,10 +1071,10 @@ export function MatrixApp({
     [flash, scopeFile, scopeFiles]
   );
 
-  const cycleVision = useCallback(() => {
+  const cycleVision = useCallback((delta = 1) => {
     setVisionMode((current) => {
       const index = VISION_MODES.indexOf(current);
-      return VISION_MODES[(index + 1) % VISION_MODES.length];
+      return VISION_MODES[(index + delta + VISION_MODES.length) % VISION_MODES.length];
     });
   }, []);
 
@@ -1268,7 +1268,9 @@ export function MatrixApp({
       const exact = matches.find((item) => item.name === inputState.value.trim());
       const chosen = exact ?? matches[Math.min(slashIndex, matches.length - 1)] ?? matches[0];
       if (!exact) {
-        setInputState((previous) => setValue(previous, chosen.name + " "));
+        const { state: next } = submit(setValue(inputState, chosen.name));
+        setInputState(next);
+        handleSlash(chosen.name);
         return;
       }
     }
@@ -1311,8 +1313,15 @@ export function MatrixApp({
 
     // Overlays that own the keyboard.
     if (screen === "model") {
-      if (key.upArrow) setPickerIndex((index) => (index - 1 + MODELS.length) % MODELS.length);
-      else if (key.downArrow) setPickerIndex((index) => (index + 1) % MODELS.length);
+      if (ch >= "1" && ch <= "6") {
+        const target = SCREENS[Number(ch) - 1];
+        if (target) {
+          setScreen(target);
+          return;
+        }
+      }
+      if (key.upArrow || ch === "k") setPickerIndex((index) => (index - 1 + MODELS.length) % MODELS.length);
+      else if (key.downArrow || ch === "j") setPickerIndex((index) => (index + 1) % MODELS.length);
       else if (key.return) {
         const chosen = MODELS[Math.min(Math.max(0, pickerIndex), MODELS.length - 1)];
         setModel(chosen);
@@ -1329,6 +1338,13 @@ export function MatrixApp({
       return;
     }
     if (screen === "help") {
+      if (ch >= "1" && ch <= "6") {
+        const target = SCREENS[Number(ch) - 1];
+        if (target) {
+          setScreen(target);
+          return;
+        }
+      }
       if (key.escape || ch === "?" || key.return) setScreen(returnScreen);
       return;
     }
@@ -1364,6 +1380,8 @@ export function MatrixApp({
         return;
       }
       if (ch === "f") setDiffExpanded((value) => !value);
+      if (key.upArrow || ch === "k") setPermissionScroll((offset) => Math.max(0, offset - 1));
+      if (key.downArrow || ch === "j") setPermissionScroll((offset) => Math.min(Math.max(0, permissionBounds.total - permissionBounds.height), offset + 1));
       if (key.pageUp) setPermissionScroll((offset) => Math.max(0, offset - Math.max(2, Math.floor(permissionBounds.height / 2))));
       if (key.pageDown) setPermissionScroll((offset) => Math.min(Math.max(0, permissionBounds.total - permissionBounds.height), offset + Math.max(2, Math.floor(permissionBounds.height / 2))));
       if (key.home) setPermissionScroll(0);
@@ -1406,37 +1424,42 @@ export function MatrixApp({
     }
 
     if (screen === "swarm" && inputState.value.length === 0) {
-      if (key.leftArrow) {
+      if (key.leftArrow || ch === "h") {
         setSwarmState((previous) => focusLane(previous, -1));
         return;
       }
-      if (key.rightArrow) {
+      if (key.rightArrow || ch === "l" || key.tab) {
         setSwarmState((previous) => focusLane(previous, 1));
         return;
       }
     }
 
     if (screen === "scope" && inputState.value.length === 0) {
-      if (ch === "[") {
+      if (ch === "[" || key.leftArrow || ch === "h") {
         cycleScopeFile(-1);
         return;
       }
-      if (ch === "]") {
+      if (ch === "]" || key.rightArrow || ch === "l") {
         cycleScopeFile(1);
         return;
       }
-      if (ch === "j" || ch === "k") {
+      if (ch === "j" || ch === "k" || key.upArrow || key.downArrow) {
+        const delta = ch === "j" || key.downArrow ? 1 : -1;
         const scopes = (scopeData.parsed?.flat ?? []).filter((item) => item.kind !== "module");
         setScopeSelection((index) =>
-          Math.min(Math.max(0, scopes.length - 1), Math.max(0, index + (ch === "j" ? 1 : -1)))
+          Math.min(Math.max(0, scopes.length - 1), Math.max(0, index + delta))
         );
         return;
       }
     }
 
     if (screen === "vision" && inputState.value.length === 0) {
-      if (ch === "v") {
-        cycleVision();
+      if (ch === "v" || key.rightArrow || ch === "l" || key.tab) {
+        cycleVision(1);
+        return;
+      }
+      if (key.leftArrow || ch === "h") {
+        cycleVision(-1);
         return;
       }
       if (ch === "e") {

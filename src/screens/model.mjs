@@ -61,6 +61,12 @@ export function ModelScreen({
     );
   });
 
+  const availHeight = Math.max(2, height - 6);
+  const maxModels = Math.max(1, Math.floor(availHeight / 2));
+  const start = Math.max(0, Math.min(selected - Math.floor(maxModels / 2), Math.max(0, models.length - maxModels)));
+  const visibleRows = rows.slice(start, start + maxModels);
+  const scrollHint = models.length > maxModels ? `  [${selected + 1}/${models.length}]` : "";
+
   return h(
     Box,
     { flexDirection: "column", height, overflow: "hidden", flexShrink: 0 },
@@ -81,13 +87,13 @@ export function ModelScreen({
         flexGrow: 1,
         overflow: "hidden",
       },
-      ...rows.slice(0, Math.max(2, height - 4)),
+      ...visibleRows,
       h(Box, { height: 1 }),
       h(
         Text,
         { color: forge.dim, wrap: "truncate" },
         truncateToWidth(
-          hasKey ? "↑/↓ select · Enter apply · Esc cancel" : "No OpenRouter key. Local Forge works fully offline.",
+          hasKey ? `↑/↓ select · Enter apply · Esc cancel${scrollHint}` : `No OpenRouter key. Local Forge works fully offline.${scrollHint}`,
           inner
         )
       )

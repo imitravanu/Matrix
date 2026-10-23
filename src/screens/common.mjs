@@ -99,23 +99,23 @@ export function KeyHints({ screen = "chat", running = false, autoApprove = false
   if (screen === "permission") {
     hint = waiting
       ? cols >= 86
-        ? "y apply · a apply all · n deny · f fold diff · PgUp/PgDn scroll · Esc deny"
-        : "y/a/n decide · f fold · Esc deny"
-      : "f fold · 2 chat · 4 swarm · 5 scope · 6 vision";
+        ? "y apply · a apply all · n deny · f fold diff · ↑/↓ scroll · Esc deny"
+        : "y/a/n decide · f fold · ↑/↓ scroll · Esc deny"
+      : "f fold · ↑/↓ scroll · 2 chat · 4 swarm · 5 scope · 6 vision";
   } else if (screen === "swarm") {
     hint = "←/→ focus lane · 2 chat · 5 scope · 6 vision · 4 swarm";
   } else if (screen === "scope") {
-    hint = "[/] cycle files · j/k scope · 2 chat · 4 swarm · 6 vision";
+    hint = "←/→ files · ↑/↓ scope · 2 chat · 4 swarm · 6 vision";
   } else if (screen === "vision") {
-    hint = "v cycle view · e export PNG · 2 chat · 5 scope · 6 vision";
+    hint = "←/→ or v view · e export PNG · 2 chat · 5 scope · 6 vision";
   } else if (screen === "model") {
-    hint = "↑/↓ select · Enter apply · Esc cancel";
+    hint = "↑/↓ or j/k select · Enter apply · Esc cancel · 1-6 screens";
   } else if (screen === "help") {
-    hint = "Esc close · ? toggle help";
+    hint = "Esc close · ? toggle · 1-6 switch screen";
   } else {
     hint = running
       ? "Ctrl+C abort · PgUp scroll · f fold · u undo · 4 swarm"
-      : "Enter send · / commands · ? keys · 4 swarm · 5 scope · 6 vision";
+      : "Enter send · / commands · ? keys · 1-6 screens · m model";
   }
   return h(
     Text,
