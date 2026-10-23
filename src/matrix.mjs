@@ -409,6 +409,7 @@ export function Frame(props) {
         visionMode,
         status,
         animTime,
+        hasKey: props.hasKey ?? isOpenRouterAvailable(),
       })
     ),
     showInput ? h(InputBar, { input, placeholder: "Describe a task, or type / for commands" }) : null,
