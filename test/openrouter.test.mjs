@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  getApiEndpoint,
   getOpenRouterKey,
   isOpenRouterAvailable,
   streamOpenRouter,
@@ -238,5 +239,39 @@ test("a missing key fails honestly and never reaches fetch", async () => {
   } finally {
     globalThis.fetch = previousFetch;
     rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("ollama local models route to local daemon with zero external credentials", async () => {
+  const model = "ollama/qwen2.5-coder";
+  const endpoint = getApiEndpoint(model);
+  assert.equal(endpoint, "http://127.0.0.1:11434/v1/chat/completions");
+  assert.equal(isOpenRouterAvailable(model), true);
+  assert.equal(getOpenRouterKey(model), "ollama");
+
+  const previousFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, init) => {
+    requests.push({ url, body: JSON.parse(init.body) });
+    return sseResponse([
+      { choices: [{ delta: { content: "local ollama response" } }] },
+      { choices: [{ delta: {}, finish_reason: "stop" }] },
+    ]);
+  };
+  try {
+    const events = await withEnv({ OPENROUTER_API_KEY: undefined }, () =>
+      collect(
+        streamOpenRouter({
+          model,
+          messages: [{ role: "user", content: "hello" }],
+        })
+      )
+    );
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].url, "http://127.0.0.1:11434/v1/chat/completions");
+    assert.equal(requests[0].body.model, "qwen2.5-coder");
+    assert.ok(events.some((e) => e.type === "content" && e.text.includes("local ollama response")));
+  } finally {
+    globalThis.fetch = previousFetch;
   }
 });

@@ -269,3 +269,37 @@ test("restored session undo writes the backup's exact non-UTF-8 bytes", (t) => {
   assert.equal(undone.ok, true);
   assert.deepEqual(readFileSync(file), original);
 });
+
+test("undoing a created file deletes it from disk", (t) => {
+  const demo = copyDemo();
+  t.after(() => demo.cleanup());
+  const home = join(demo.root, "home");
+  envHome(t, home);
+  const newFilePath = "src/new_module.py";
+  const absNewPath = join(demo.workspace, newFilePath);
+  writeFileSync(absNewPath, "print('hello')\n");
+  const controller = createRunController({ home });
+  t.after(() => controller.dispose());
+
+  const armed = controller.restoreFromSession(
+    {
+      file: newFilePath,
+      absPath: absNewPath,
+      original: "",
+      updatedText: "print('hello')\n",
+      stats: { adds: 1, dels: 0, changed: 1 },
+      backupPath: null,
+      isCreation: true,
+    },
+    { root: demo.workspace }
+  );
+  assert.equal(armed, true);
+  assert.equal(existsSync(absNewPath), true);
+  assert.equal(controller.canUndo(), true);
+
+  const undone = controller.undoLast();
+  assert.equal(undone.ok, true);
+  assert.deepEqual(undone.files, [newFilePath]);
+  assert.equal(existsSync(absNewPath), false);
+  assert.equal(controller.canUndo(), false);
+});

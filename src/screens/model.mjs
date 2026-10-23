@@ -38,12 +38,13 @@ export function ModelScreen({
   models.forEach((model, index) => {
     const isSelected = index === selected;
     const isCurrent = activeId ? model.id === activeId : false;
-    const needsKey = model.remote && !hasKey;
+    const isOllama = model.provider === "ollama" || model.id.startsWith("ollama/");
+    const needsKey = model.remote && !isOllama && !hasKey;
     const freeTier = isFreeModel(model);
 
     // Badges
-    const badgeText = !model.remote ? "[OFFLINE]" : freeTier ? "[FREE]" : "[PRO]";
-    const badgeColor = !model.remote ? forge.muted : freeTier ? forge.accent : forge.warn;
+    const badgeText = !model.remote ? "[OFFLINE]" : isOllama ? "[LOCAL]" : freeTier ? "[FREE]" : "[PRO]";
+    const badgeColor = !model.remote ? forge.muted : isOllama ? forge.accent : freeTier ? forge.accent : forge.warn;
 
     rows.push(
       h(
@@ -64,7 +65,7 @@ export function ModelScreen({
           ),
           h(Text, { color: badgeColor, bold: true }, ` ${badgeText}`),
           isCurrent ? h(Text, { color: forge.info, bold: true }, " [ACTIVE]") : null,
-          h(Text, { color: forge.dim }, `  ${model.remote ? "openrouter" : "matrix"}`),
+          h(Text, { color: forge.dim }, `  ${model.provider ?? (model.remote ? "openrouter" : "matrix")}`),
           needsKey ? h(Text, { color: forge.warn }, "  · needs key") : null
         ),
         h(

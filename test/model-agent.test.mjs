@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -510,4 +510,173 @@ test("parseToolArgs handles valid JSON, markdown fences, trailing commas, and no
     parseToolArgs('Sure, calling tool: {"query": "bounds",} right now.'),
     { query: "bounds" }
   );
+});
+
+test("write_file creates a new file through approval gate with unified diff", async (t) => {
+  const demo = copyDemo();
+  t.after(() => demo.cleanup());
+  const project = detectProject(demo.workspace);
+  const model = resolveModel("sonnet");
+  const previousFetch = globalThis.fetch;
+  const newFilePath = "src/helper.py";
+  const newFileContent = "def helper():\n    return 42\n";
+
+  const { fetchMock } = fakeOpenRouter([
+    () =>
+      sseResponse(
+        toolCallChunks("call_write", "write_file", {
+          path: newFilePath,
+          content: newFileContent,
+          rationale: "create helper module",
+        })
+      ),
+    () => sseResponse(contentChunks("I created helper.py.")),
+  ]);
+  globalThis.fetch = fetchMock;
+  try {
+    let proposalSeen = null;
+    const result = await withEnv({ OPENROUTER_API_KEY: "test-key" }, () =>
+      runModelAgent({
+        task: "Create helper.py",
+        project,
+        model,
+        requestApproval: async (proposal) => {
+          proposalSeen = proposal;
+          return "y";
+        },
+      })
+    );
+    assert.equal(result.error, false);
+    assert.ok(proposalSeen);
+    assert.equal(proposalSeen.file, "src/helper.py");
+    assert.equal(proposalSeen.isCreation, true);
+    assert.ok(proposalSeen.patch.includes("+def helper():"));
+    assert.equal(readFileSync(join(demo.workspace, newFilePath), "utf8"), newFileContent);
+    assert.ok(project.files.some((f) => f.rel === newFilePath));
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test("run_command executes safe commands and blocks destructive patterns", async (t) => {
+  const demo = copyDemo();
+  t.after(() => demo.cleanup());
+  const project = detectProject(demo.workspace);
+  const model = resolveModel("sonnet");
+  const previousFetch = globalThis.fetch;
+
+  const { fetchMock } = fakeOpenRouter([
+    () =>
+      sseResponse(
+        toolCallChunks("call_cmd1", "run_command", {
+          command: "echo 'hello matrix'",
+          rationale: "test output",
+        })
+      ),
+    () =>
+      sseResponse(
+        toolCallChunks("call_cmd2", "run_command", {
+          command: "rm -rf /",
+          rationale: "destructive test",
+        })
+      ),
+    () => sseResponse(contentChunks("done")),
+  ]);
+  globalThis.fetch = fetchMock;
+  const events = [];
+  try {
+    const result = await withEnv({ OPENROUTER_API_KEY: "test-key" }, () =>
+      runModelAgent({
+        task: "run commands",
+        project,
+        model,
+        onEvent: (event) => events.push(event),
+      })
+    );
+    assert.equal(result.error, false);
+    const cmd1End = events.find((e) => e.type === "tool:end" && e.id === "call_cmd1");
+    assert.ok(cmd1End);
+    assert.equal(cmd1End.ok, true);
+    assert.ok(cmd1End.data.stdout.includes("hello matrix"));
+
+    const cmd2End = events.find((e) => e.type === "tool:end" && e.id === "call_cmd2");
+    assert.ok(cmd2End);
+    assert.equal(cmd2End.ok, false);
+    assert.match(cmd2End.summary, /dangerous destructive pattern/);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test("autonomous self-healing loop feeds test failure traceback back to model for automatic recovery", async (t) => {
+  const demo = copyDemo();
+  t.after(() => demo.cleanup());
+  const project = detectProject(demo.workspace);
+  const model = resolveModel("sonnet");
+  const previousFetch = globalThis.fetch;
+
+  // Round 1: Model proposes a broken edit that makes pytest fail
+  // Round 2: Model finishes round with content -> calls.length === 0 -> auto-verify fails!
+  //          Self-healing loop triggers -> user message with traceback fed into messages
+  // Round 3: Model receives traceback, proposes correct edit
+  // Round 4: Model finishes round with content -> calls.length === 0 -> auto-verify passes!
+  const { fetchMock, requests } = fakeOpenRouter([
+    () =>
+      sseResponse(
+        toolCallChunks("call_bad_edit", "propose_edit", {
+          path: "src/processor.py",
+          start_line: 20,
+          end_line: 21,
+          replacement: "        context = bounds[0:0]\n",
+          rationale: "erroneous empty slice",
+        })
+      ),
+    () => sseResponse(contentChunks("I made the change.")),
+    () =>
+      sseResponse(
+        toolCallChunks("call_fix_edit", "propose_edit", {
+          path: "src/processor.py",
+          start_line: 20,
+          end_line: 21,
+          replacement: "        context = bounds[0:len(bounds)]\n",
+          rationale: "correct bounds slice after seeing test failure",
+        })
+      ),
+    () => sseResponse(contentChunks("I corrected the slice after the test failure.")),
+  ]);
+  globalThis.fetch = fetchMock;
+  const events = [];
+  try {
+    const result = await withEnv({ OPENROUTER_API_KEY: "test-key" }, () =>
+      runModelAgent({
+        task: "Fix processor.py",
+        project,
+        model,
+        autoApprove: true,
+        onEvent: (event) => events.push(event),
+      })
+    );
+    assert.equal(result.error, false);
+    // Verified tests ultimately passed
+    assert.equal(result.verifyTests.ok, true);
+    assert.equal(result.verifyTests.passed, 4);
+    assert.equal(result.verifyTests.failed, 0);
+
+    // Verify self-healing phase was emitted
+    const healEvent = events.find((e) => e.type === "phase" && e.phase === "healing");
+    assert.ok(healEvent, "should have emitted healing phase");
+    assert.match(healEvent.detail, /Self-healing attempt 1\/2/);
+
+    // Verify the feedback message sent to OpenRouter in round 3 contains the test failure
+    assert.ok(requests.length >= 3);
+    const round3Messages = requests[2].body.messages;
+    const feedbackTurn = round3Messages.find((m) => m.role === "user" && m.content.includes("AUTOMATIC VERIFICATION FAILED"));
+    assert.ok(feedbackTurn, "round 3 prompt should include test failure feedback");
+    assert.match(feedbackTurn.content, /failure traceback/);
+
+    // Verify file on disk is fixed
+    assert.ok(readFileSync(join(demo.workspace, "src", "processor.py"), "utf8").includes(FIXED));
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
 });

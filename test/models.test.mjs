@@ -21,7 +21,7 @@ test("the registry has real model ids and Local Forge first", () => {
   assert.ok(remote.length >= 5);
   for (const model of remote) {
     assert.match(model.id, /^[a-z0-9-]+\/[a-z0-9.:-]+$/i);
-    assert.equal(model.provider, "openrouter");
+    assert.ok(["openrouter", "ollama"].includes(model.provider));
     assert.ok(model.pricing.input >= 0);
     assert.ok(model.pricing.output >= 0);
   }
@@ -29,6 +29,7 @@ test("the registry has real model ids and Local Forge first", () => {
   assert.ok(remote.some((model) => model.id === "qwen/qwen3-coder-next"));
   assert.ok(remote.some((model) => model.id === "openrouter/free"));
   assert.ok(remote.some((model) => model.id === "nvidia/nemotron-3.5-lightning:free"));
+  assert.ok(remote.some((model) => model.id === "ollama/qwen2.5-coder"));
   assert.ok(remote.every((model) => !/space bunny|stealth/i.test(`${model.id} ${model.name}`)));
 });
 
@@ -36,6 +37,9 @@ test("resolveModel accepts ids, shorts, names, aliases and falls back local", ()
   assert.equal(resolveModel("local"), LOCAL_MODEL);
   assert.equal(resolveModel("forge"), LOCAL_MODEL);
   assert.equal(resolveModel("free").id, "openrouter/free");
+  assert.equal(resolveModel("ollama").id, "ollama/qwen2.5-coder");
+  assert.equal(resolveModel("ollama/llama3.2").id, "ollama/llama3.2");
+  assert.equal(resolveModel("ollama/llama3.2").free, true);
   assert.equal(resolveModel("nemotron").id, "nvidia/nemotron-3.5-lightning:free");
   assert.equal(resolveModel("sonnet").id, "anthropic/claude-sonnet-4.6");
   assert.equal(resolveModel("Claude Sonnet 4.6").id, "anthropic/claude-sonnet-4.6");
