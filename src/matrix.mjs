@@ -8,18 +8,21 @@
 // ============================================================================
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, useAnimation, useApp, useInput } from "ink";
+import { Box, Text, useAnimation, useApp, useInput, usePaste } from "ink";
 
 import { forge } from "../lib/forge.mjs";
 import { useLayout } from "../lib/term.mjs";
+import { parseTerminalMouse } from "../lib/mouse.mjs";
 import {
   backspace,
   completeSlash,
   createInputState,
   deleteForward,
+  deleteWordLeft,
   historyNext,
   historyPrevious,
   insertText,
+  killLine,
   moveEnd,
   moveHome,
   moveLeft,
@@ -1229,11 +1232,27 @@ export function MatrixApp({
         case "/swarm":
           setScreen("swarm");
           break;
+        case "/plan":
+          setScreen("swarm");
+          setSwarmState((previous) => ({ ...previous, focusedLane: 0 }));
+          break;
         case "/vision":
           setScreen("vision");
           if (arg && VISION_MODES.includes(arg)) setVisionMode(arg);
           break;
+        case "/export":
+          exportVision();
+          break;
         case "/model":
+          if (arg) {
+            const found = resolveModel(arg);
+            if (found && (found !== LOCAL_MODEL || arg.toLowerCase().includes("local") || arg.toLowerCase().includes("forge"))) {
+              setModel(found);
+              modelRef.current = found;
+              flash(`model · ${found.name}`);
+              break;
+            }
+          }
           setReturnScreen(screenRef.current);
           setPickerIndex(modelIndex(modelRef.current?.id));
           setScreen("model");
@@ -1295,6 +1314,33 @@ export function MatrixApp({
   }, [returnScreen]);
 
   useInput((ch, key) => {
+    const mouse = parseTerminalMouse(ch);
+    if (mouse) {
+      if (mouse.direction === "up") {
+        if (screen === "chat" || screen === "empty") {
+          setChatScroll((offset) => Math.min(Math.max(0, chatBounds.total - chatBounds.height), offset + 3));
+        } else if (screen === "permission") {
+          setPermissionScroll((offset) => Math.max(0, offset - 3));
+        } else if (screen === "model") {
+          setPickerIndex((index) => (index - 1 + MODELS.length) % MODELS.length);
+        } else if (screen === "scope") {
+          setScopeSelection((index) => Math.max(0, index - 1));
+        }
+      } else if (mouse.direction === "down") {
+        if (screen === "chat" || screen === "empty") {
+          setChatScroll((offset) => Math.max(0, offset - 3));
+        } else if (screen === "permission") {
+          setPermissionScroll((offset) => Math.min(Math.max(0, permissionBounds.total - permissionBounds.height), offset + 3));
+        } else if (screen === "model") {
+          setPickerIndex((index) => (index + 1) % MODELS.length);
+        } else if (screen === "scope") {
+          const scopes = (scopeData.parsed?.flat ?? []).filter((item) => item.kind !== "module");
+          setScopeSelection((index) => Math.min(Math.max(0, scopes.length - 1), index + 1));
+        }
+      }
+      return;
+    }
+
     if (key.ctrl && ch === "c") {
       if (runningRef.current) {
         if (testAbortRef.current) {
@@ -1576,8 +1622,42 @@ export function MatrixApp({
       setInputState((previous) => setValue(previous, ""));
       return;
     }
+    if (key.ctrl && ch === "w") {
+      setInputState((previous) => deleteWordLeft(previous));
+      return;
+    }
+    if (key.ctrl && ch === "k") {
+      setInputState((previous) => killLine(previous));
+      return;
+    }
+    if (key.ctrl && ch === "l") {
+      setChatScroll(0);
+      return;
+    }
+    if (key.ctrl && ch === "b") {
+      setInputState((previous) => moveLeft(previous));
+      return;
+    }
+    if (key.ctrl && ch === "f") {
+      setInputState((previous) => moveRight(previous));
+      return;
+    }
+    if (key.ctrl && ch === "p") {
+      setInputState((previous) => historyPrevious(previous));
+      return;
+    }
+    if (key.ctrl && ch === "n") {
+      setInputState((previous) => historyNext(previous));
+      return;
+    }
     if (ch && !key.ctrl && !key.meta) {
       setInputState((previous) => insertText(previous, ch));
+    }
+  });
+
+  usePaste((text) => {
+    if (text) {
+      setInputState((previous) => insertText(previous, text));
     }
   });
 

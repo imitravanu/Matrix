@@ -8,10 +8,12 @@ import {
   createInputState,
   cursorPosition,
   deleteForward,
+  deleteWordLeft,
   historyNext,
   historyPrevious,
   inputSegments,
   insertText,
+  killLine,
   moveEnd,
   moveHome,
   moveLeft,
@@ -116,4 +118,20 @@ test("setValue normalizes and moves the cursor to the end", () => {
   const state = setValue(createInputState("abc"), "x\ny");
   assert.equal(state.value, "x y");
   assert.equal(state.cursor, 3);
+});
+
+test("deleteWordLeft and killLine edit accurately", () => {
+  let state = createInputState("alpha beta gamma");
+  state = deleteWordLeft(state);
+  assert.equal(state.value, "alpha beta ");
+  assert.equal(state.cursor, 11);
+  state = deleteWordLeft(state);
+  assert.equal(state.value, "alpha ");
+  assert.equal(state.cursor, 6);
+
+  let state2 = createInputState("fix processor bug");
+  state2 = moveHome(state2);
+  state2 = moveWordRight(state2); // at end of "fix "
+  state2 = killLine(state2);
+  assert.equal(state2.value, "fix ");
 });
