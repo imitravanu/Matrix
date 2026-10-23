@@ -1,18 +1,45 @@
 {
-  "name": "anvil-ui-demo",
+  "name": "matrix",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "private": true,
+  "type": "module",
+  "description": "Matrix — a spatial agent terminal workbench with offline Local Forge, real patch gates and a truecolor scope canvas.",
+  "main": "src/matrix.mjs",
+  "bin": {
+    "matrix": "./bin/matrix.mjs"
   },
-  "keywords": [],
-  "author": "",
+  "scripts": {
+    "start": "node bin/matrix.mjs",
+    "matrix": "node bin/matrix.mjs",
+    "tour": "node bin/matrix.mjs tour --demo",
+    "vision": "node bin/matrix.mjs vision",
+    "dump": "node bin/matrix.mjs dump --demo",
+    "smoke": "node bin/matrix.mjs smoke --demo",
+    "test": "node --test \"test/*.test.mjs\"",
+    "bench": "node bin/matrix.mjs bench",
+    "doctor": "node bin/matrix.mjs doctor",
+    "check": "npm run test"
+  },
+  "keywords": [
+    "matrix",
+    "tui",
+    "multi-agent",
+    "swarm",
+    "local-first",
+    "code-agent",
+    "openrouter",
+    "truecolor"
+  ],
+  "author": "mitravanu",
   "license": "ISC",
-  "type": "commonjs",
+  "engines": {
+    "node": ">=22"
+  },
   "dependencies": {
     "ink": "^7.1.1",
-    "ink-testing-library": "^4.0.0",
     "react": "^19.3.0"
+  },
+  "devDependencies": {
+    "ink-testing-library": "^4.0.0"
   }
 }
