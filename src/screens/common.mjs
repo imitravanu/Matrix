@@ -107,7 +107,7 @@ export function KeyHints({ screen = "chat", running = false, autoApprove = false
   } else if (screen === "scope") {
     hint = "←/→ files · ↑/↓ scope · 2 chat · 4 swarm · 6 vision";
   } else if (screen === "vision") {
-    hint = "←/→ or v view · e export PNG · 2 chat · 5 scope · 6 vision";
+    hint = "←/→ view · /export PNG · 2 chat · 5 scope · 6 vision";
   } else if (screen === "model") {
     hint = "↑/↓ or j/k select · Enter apply · Esc cancel · 1-6 screens";
   } else if (screen === "help") {

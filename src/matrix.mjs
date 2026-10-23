@@ -500,6 +500,7 @@ export function MatrixApp({
   const saveRef = useRef(null);
   const permissionResolved = useRef(false);
   const testAbortRef = useRef(null);
+  const pendingShortcutRef = useRef(null);
 
   useEffect(() => {
     historyRef.current = history;
@@ -1233,6 +1234,10 @@ export function MatrixApp({
             }
           }
           break;
+        case "/chat":
+          setScreen(historyRef.current.length > 0 ? "chat" : "empty");
+          break;
+        case "/scope":
         case "/ast":
           openScope();
           break;
@@ -1329,6 +1334,22 @@ export function MatrixApp({
   }, [returnScreen]);
 
   useInput((ch, key) => {
+    let hadPending = false;
+    if (pendingShortcutRef.current) {
+      clearTimeout(pendingShortcutRef.current.timer);
+      const pending = pendingShortcutRef.current;
+      pendingShortcutRef.current = null;
+      if (key.backspace || key.delete || key.escape) {
+        return;
+      }
+      if (pending.isScreenKey && ch >= "1" && ch <= "6" && !key.ctrl && !key.meta) {
+        pending.action();
+      } else {
+        hadPending = true;
+        setInputState((previous) => insertText(previous, pending.ch));
+      }
+    }
+
     const mouse = parseTerminalMouse(ch);
     if (mouse) {
       if (mouse.direction === "up") {
@@ -1340,6 +1361,10 @@ export function MatrixApp({
           setPickerIndex((index) => (index - 1 + MODELS.length) % MODELS.length);
         } else if (screen === "scope") {
           setScopeSelection((index) => Math.max(0, index - 1));
+        } else if (screen === "swarm") {
+          setSwarmState((previous) => focusLane(previous, -1));
+        } else if (screen === "vision") {
+          cycleVision(-1);
         }
       } else if (mouse.direction === "down") {
         if (screen === "chat" || screen === "empty") {
@@ -1351,6 +1376,10 @@ export function MatrixApp({
         } else if (screen === "scope") {
           const scopes = (scopeData.parsed?.flat ?? []).filter((item) => item.kind !== "module");
           setScopeSelection((index) => Math.min(Math.max(0, scopes.length - 1), index + 1));
+        } else if (screen === "swarm") {
+          setSwarmState((previous) => focusLane(previous, 1));
+        } else if (screen === "vision") {
+          cycleVision(1);
         }
       }
       return;
@@ -1495,27 +1524,27 @@ export function MatrixApp({
     }
 
     if (screen === "swarm" && inputState.value.length === 0) {
-      if (key.leftArrow || ch === "h") {
+      if (key.leftArrow) {
         setSwarmState((previous) => focusLane(previous, -1));
         return;
       }
-      if (key.rightArrow || ch === "l" || key.tab) {
+      if (key.rightArrow || key.tab) {
         setSwarmState((previous) => focusLane(previous, 1));
         return;
       }
     }
 
     if (screen === "scope" && inputState.value.length === 0) {
-      if (ch === "[" || key.leftArrow || ch === "h") {
+      if (key.leftArrow) {
         cycleScopeFile(-1);
         return;
       }
-      if (ch === "]" || key.rightArrow || ch === "l") {
+      if (key.rightArrow) {
         cycleScopeFile(1);
         return;
       }
-      if (ch === "j" || ch === "k" || key.upArrow || key.downArrow) {
-        const delta = ch === "j" || key.downArrow ? 1 : -1;
+      if (key.upArrow || key.downArrow) {
+        const delta = key.downArrow ? 1 : -1;
         const scopes = (scopeData.parsed?.flat ?? []).filter((item) => item.kind !== "module");
         setScopeSelection((index) =>
           Math.min(Math.max(0, scopes.length - 1), Math.max(0, index + delta))
@@ -1525,63 +1554,71 @@ export function MatrixApp({
     }
 
     if (screen === "vision" && inputState.value.length === 0) {
-      if (ch === "v" || key.rightArrow || ch === "l" || key.tab) {
+      if (key.rightArrow || key.tab) {
         cycleVision(1);
         return;
       }
-      if (key.leftArrow || ch === "h") {
+      if (key.leftArrow) {
         cycleVision(-1);
-        return;
-      }
-      if (ch === "e") {
-        exportVision();
         return;
       }
     }
 
-    if (ch === "?" && inputState.value.length === 0) {
-      setReturnScreen(screenRef.current);
-      setScreen("help");
-      return;
-    }
-    if (ch === "m" && inputState.value.length === 0 && !runningRef.current) {
-      toggleModelPicker();
-      return;
-    }
-    if (ch === "u" && inputState.value.length === 0 && !runningRef.current) {
-      if (controller.canUndo()) runUndo();
-      else flash("no applied patch to undo");
-      return;
-    }
-    if (runningRef.current && (ch === "f" || ch === "F")) {
-      if (liveRef.current?.editFile) setDiffExpanded((value) => !value);
-      else setThoughtsExpanded((value) => !value);
-      return;
-    }
-    if (inputState.value.length === 0 && !runningRef.current) {
-      if (ch === "1") {
-        setScreen("empty");
+    const scheduleShortcut = (char, action, isScreenKey = false) => {
+      pendingShortcutRef.current = {
+        ch: char,
+        action,
+        isScreenKey,
+        timer: setTimeout(() => {
+          pendingShortcutRef.current = null;
+          action();
+        }, 50),
+      };
+    };
+
+    if (!hadPending && inputState.value.length === 0 && !key.ctrl && !key.meta) {
+      if (ch === "?" && !runningRef.current) {
+        scheduleShortcut("?", () => {
+          setReturnScreen(screenRef.current);
+          setScreen("help");
+        });
         return;
       }
-      if (ch === "2") {
-        setScreen("chat");
+      if (ch === "m" && !runningRef.current) {
+        scheduleShortcut("m", () => {
+          toggleModelPicker();
+        });
         return;
       }
-      if (ch === "3") {
-        setScreen(permission ? "permission" : "chat");
-        if (!permission) flash("no patch waiting");
+      if (ch === "u" && !runningRef.current) {
+        scheduleShortcut("u", () => {
+          if (controller.canUndo()) runUndo();
+          else flash("no applied patch to undo");
+        });
         return;
       }
-      if (ch === "4") {
-        setScreen("swarm");
+      if (runningRef.current && (ch === "f" || ch === "F")) {
+        scheduleShortcut(ch, () => {
+          if (liveRef.current?.editFile) setDiffExpanded((value) => !value);
+          else setThoughtsExpanded((value) => !value);
+        });
         return;
       }
-      if (ch === "5") {
-        openScope();
-        return;
-      }
-      if (ch === "6") {
-        setScreen("vision");
+      if (!runningRef.current && ch >= "1" && ch <= "6") {
+        scheduleShortcut(
+          ch,
+          () => {
+            if (ch === "1") setScreen("empty");
+            else if (ch === "2") setScreen("chat");
+            else if (ch === "3") {
+              setScreen(permission ? "permission" : "chat");
+              if (!permission) flash("no patch waiting");
+            } else if (ch === "4") setScreen("swarm");
+            else if (ch === "5") openScope();
+            else if (ch === "6") setScreen("vision");
+          },
+          true
+        );
         return;
       }
     }
@@ -1682,7 +1719,14 @@ export function MatrixApp({
 
   usePaste((text) => {
     if (text) {
-      setInputState((previous) => insertText(previous, text));
+      if (pendingShortcutRef.current) {
+        clearTimeout(pendingShortcutRef.current.timer);
+        const pendingCh = pendingShortcutRef.current.ch;
+        pendingShortcutRef.current = null;
+        setInputState((previous) => insertText(previous, pendingCh + text));
+      } else {
+        setInputState((previous) => insertText(previous, text));
+      }
     }
   });
 
@@ -1701,6 +1745,7 @@ export function MatrixApp({
     return () => {
       if (statusTimer.current) clearTimeout(statusTimer.current);
       if (liveTimer.current) clearTimeout(liveTimer.current);
+      if (pendingShortcutRef.current) clearTimeout(pendingShortcutRef.current.timer);
       saveRef.current?.();
       controller.dispose();
     };

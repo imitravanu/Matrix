@@ -263,3 +263,84 @@ test("typing text starting with 'f' or 'F' preserves the initial letter and does
   await waitFrame(app, /Fix the slice bug/, "the input line containing the full text with uppercase F");
 });
 
+test("typing text starting with 'm', 'u', numbers, or screen keys preserves initial characters across all screens", async (t) => {
+  const { app } = setup(t);
+  await waitFrame(app, /S P A T I A L/, "the empty screen");
+
+  // Typing "make a processor fix" starting with 'm'
+  for (const ch of "make a processor fix") {
+    app.stdin.write(ch);
+    await sleep(10);
+  }
+  await waitFrame(app, /make a processor fix/, "full prompt starting with m preserved");
+  assert.equal(frameText(app).includes("MODEL ROUTER"), false, "model router must not open when typing words starting with m");
+
+  // Clear line with Ctrl+U
+  app.stdin.write("\x15");
+  await sleep(20);
+
+  // Typing "update the bounds slice" starting with 'u'
+  for (const ch of "update the bounds slice") {
+    app.stdin.write(ch);
+    await sleep(10);
+  }
+  await waitFrame(app, /update the bounds slice/, "full prompt starting with u preserved");
+
+  // Clear line with Ctrl+U
+  app.stdin.write("\x15");
+  await sleep(20);
+
+  // Typing "1. check bounds" starting with digit '1'
+  for (const ch of "1. check bounds") {
+    app.stdin.write(ch);
+    await sleep(10);
+  }
+  await waitFrame(app, /1\. check bounds/, "full prompt starting with 1 preserved");
+
+  // Clear line with Ctrl+U
+  app.stdin.write("\x15");
+  await sleep(20);
+
+  // Switch to swarm screen with slash command
+  await typeLine(app, "/swarm");
+  await waitFrame(app, /swarm/i, "swarm screen");
+
+  // On swarm screen, type "help refine the lanes" starting with 'h'
+  for (const ch of "help refine the lanes") {
+    app.stdin.write(ch);
+    await sleep(10);
+  }
+  await waitFrame(app, /help refine the lanes/, "full prompt on swarm starting with h preserved");
+
+  // Clear line with Ctrl+U
+  app.stdin.write("\x15");
+  await sleep(20);
+
+  // Switch to scope screen
+  await typeLine(app, "/scope");
+  await waitFrame(app, /scope lens/i, "scope lens screen");
+
+  // On scope screen, type "keep the comments" starting with 'k'
+  for (const ch of "keep the comments") {
+    app.stdin.write(ch);
+    await sleep(10);
+  }
+  await waitFrame(app, /keep the comments/, "full prompt on scope starting with k preserved");
+
+  // Clear line with Ctrl+U
+  app.stdin.write("\x15");
+  await sleep(20);
+
+  // Switch to vision screen
+  await typeLine(app, "/vision");
+  await waitFrame(app, /VISION/, "vision screen");
+
+  // On vision screen, type "verify canvas pixel runs" starting with 'v'
+  for (const ch of "verify canvas pixel runs") {
+    app.stdin.write(ch);
+    await sleep(10);
+  }
+  await waitFrame(app, /verify canvas pixel runs/, "full prompt on vision starting with v preserved");
+});
+
+
