@@ -41,6 +41,38 @@ test("findSliceOffByOne recognises Python and JS slice bugs", () => {
   assert.match(hits[2].after, /\.slice\(0, list\.size\)/);
 });
 
+test("findSliceOffByOne ignores string and comment examples", () => {
+  const js = [
+    'const note = "use items.slice(0, items.length - 1)";',
+    "// items.slice(0, items.length - 1)",
+    "/* items.slice(0, items.length - 1) */",
+    "const real = items.slice(0, items.length - 1);",
+  ].join("\n");
+  const jsHits = findSliceOffByOne(js, { language: "javascript" });
+  assert.equal(jsHits.length, 1);
+  assert.equal(jsHits[0].line, 4);
+  assert.equal(jsHits[0].after, "const real = items.slice(0, items.length);");
+
+  const python = [
+    '"""',
+    "bounds = items[0:len(items) - 1]",
+    '"""',
+    "# items[0:len(items) - 1]",
+    "context = bounds[0:len(bounds) - 1]",
+  ].join("\n");
+  const pythonHits = findSliceOffByOne(python, { language: "python" });
+  assert.equal(pythonHits.length, 1);
+  assert.equal(pythonHits[0].line, 5);
+});
+
+test("findSliceOffByOne preserves strings beside a real slice", () => {
+  const line = 'const label = "items.slice(0, items.length - 1)"; const tail = items.slice(0, items.length - 1);';
+  const hits = findSliceOffByOne(line, { language: "javascript" });
+  assert.equal(hits.length, 1);
+  assert.match(hits[0].after, /"items\.slice\(0, items\.length - 1\)"/);
+  assert.match(hits[0].after, /const tail = items\.slice\(0, items\.length\)/);
+});
+
 test("findSliceOffByOne never rewrites valid last-element indexing", () => {
   const valid = [
     "const last = items[items.length - 1];",

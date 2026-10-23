@@ -5,7 +5,9 @@ import {
   LOCAL_MODEL,
   MODELS,
   estimateCost,
+  filterModels,
   formatCost,
+  isFreeModel,
   modelById,
   modelIndex,
   modelLabel,
@@ -18,25 +20,41 @@ test("the registry has real model ids and Local Forge first", () => {
   const remote = MODELS.filter((model) => model.remote);
   assert.ok(remote.length >= 5);
   for (const model of remote) {
-    assert.match(model.id, /^[a-z0-9-]+\/[a-z0-9.-]+$/i);
+    assert.match(model.id, /^[a-z0-9-]+\/[a-z0-9.:-]+$/i);
     assert.equal(model.provider, "openrouter");
     assert.ok(model.pricing.input >= 0);
     assert.ok(model.pricing.output >= 0);
   }
   assert.ok(remote.some((model) => model.id === "anthropic/claude-sonnet-4.6"));
   assert.ok(remote.some((model) => model.id === "qwen/qwen3-coder-next"));
+  assert.ok(remote.some((model) => model.id === "openrouter/free"));
+  assert.ok(remote.some((model) => model.id === "nvidia/nemotron-3.5-lightning:free"));
   assert.ok(remote.every((model) => !/space bunny|stealth/i.test(`${model.id} ${model.name}`)));
 });
 
 test("resolveModel accepts ids, shorts, names, aliases and falls back local", () => {
   assert.equal(resolveModel("local"), LOCAL_MODEL);
   assert.equal(resolveModel("forge"), LOCAL_MODEL);
+  assert.equal(resolveModel("free").id, "openrouter/free");
+  assert.equal(resolveModel("nemotron").id, "nvidia/nemotron-3.5-lightning:free");
   assert.equal(resolveModel("sonnet").id, "anthropic/claude-sonnet-4.6");
   assert.equal(resolveModel("Claude Sonnet 4.6").id, "anthropic/claude-sonnet-4.6");
   assert.equal(resolveModel("google/gemini-2.5-flash").short, "gemini");
   assert.equal(resolveModel("deepseek").provider, "openrouter");
   assert.equal(resolveModel("not-a-model"), LOCAL_MODEL);
   assert.equal(resolveModel(null), LOCAL_MODEL);
+});
+
+test("isFreeModel and filterModels categorize zero-cost models", () => {
+  assert.equal(isFreeModel(LOCAL_MODEL), true);
+  assert.equal(isFreeModel(resolveModel("free")), true);
+  assert.equal(isFreeModel(resolveModel("sonnet")), false);
+  const freeList = filterModels(MODELS, "free");
+  assert.ok(freeList.length >= 7);
+  assert.ok(freeList.every(isFreeModel));
+  const nemotron = filterModels(MODELS, "nemotron");
+  assert.equal(nemotron.length, 1);
+  assert.equal(nemotron[0].short, "nemotron");
 });
 
 test("modelById and modelIndex are safe for unknown ids", () => {

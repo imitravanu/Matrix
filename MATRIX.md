@@ -91,7 +91,10 @@ from the model registry pricing, not invented by the renderer.
 
 If no OpenRouter key is configured, a remote headless run exits with an error before making a
 network request. In the interactive UI, selecting a remote model produces a warning; Local Forge
-remains selected and usable.
+remains selected and usable. Matrix comes pre-configured with top verified zero-cost free models
+(`openrouter/free`, `nvidia/nemotron-3.5-lightning:free`, `cohere/north-mini-code:free`,
+`poolside/laguna-s-2.1:free`, `recursive/flint-v1.0:free`, `liquid/lfm-2.5-2.6b:free`,
+`google/gemma-4-31b-it:free`) with full tool-calling capabilities.
 
 ## Agent event protocol
 
@@ -201,12 +204,15 @@ invents a second concurrent model run to fill a lane.
 - `runs/` — per-run event logs written for later inspection.
 
 Writes use atomic JSON replacement. Session and backup files are created with private permissions
-where the platform supports it. Sessions are filtered by workspace when resuming. `/new` starts a
-fresh id and clears metrics, prompt history, saved patch and undo; `/clear` clears only the
-transcript and keeps the session and undo state.
+where the platform supports it. Session ids are validated and sessions are filtered by workspace
+when resuming; a record from another workspace is not loaded. `/new` starts a fresh id and clears
+metrics, prompt history, saved patch, undo and auto-approve; `/clear` clears only the transcript and
+keeps the session and undo state. `/auto` toggles auto-approve for the next run. Pressing `a` at a
+gate enables it for the current run only, and the default is restored when that run finishes.
 
-Credentials are read from `OPENROUTER_API_KEY` or `~/.matrix/credentials.json`. Doctor and the UI
-report whether a key is available, never its value.
+Credentials are read from `OPENROUTER_API_KEY` or `~/.matrix/credentials.json` (for example
+`{"openrouterApiKey":"..."}`; the legacy `apiKey` field is still accepted). Doctor and the UI report
+whether a key is available, never its value.
 
 ## CLI and headless behavior
 
@@ -217,10 +223,11 @@ The CLI has two modes:
 - **Headless** when a task is supplied without a TTY. It prints a plan, result, edit summary and
   verification, or JSON with `--json`.
 
-Headless edits are denied unless `--yes` is present. The process exit code is non-zero when the run
-errors or verification reports failures. Remote runs without credentials fail honestly. Render-only
-commands (`tour`, `dump`, `vision`, `smoke`) never patch the working tree; `tour` and `dump` use a
-temporary copy of the bundled demo.
+Headless edits are denied unless `--yes` is present. The process exit code and `result.ok` are
+false when the run errors or has a failure, when verification fails, times out, or is aborted. A
+denied patch is still a completed, honest run (exit 0). Remote runs without credentials fail
+honestly. Render-only commands (`tour`, `dump`, `vision`, `smoke`) never patch the working tree;
+`tour` and `dump` use a temporary copy of the bundled demo.
 
 ## Testing
 
@@ -233,9 +240,10 @@ The suite uses `node:test` and temporary directories. It covers:
 - remote streaming and tool calls against mocked HTTP, plus honest missing-key behavior;
 - raster primitives, graph data, short-canvas rendering and PNG encoding;
 - every screen at multiple dimensions, all three Vision modes, and frame-width invariants;
-- the real Ink application through `ink-testing-library`;
-- CLI integration: version, help, doctor, sessions, smoke, dump, PNG export, apply, deny, invalid
-  flags, demo-write protection and missing credentials.
+- the real Ink application through `ink-testing-library`, including auto-approve lifetime,
+  `/test` cancellation and slash-menu scrolling;
+- CLI integration: version, help, doctor, sessions, smoke, dump, PNG export, apply, deny, failing
+  Node verification, invalid flags, demo-write protection and missing credentials.
 
 Run it with:
 

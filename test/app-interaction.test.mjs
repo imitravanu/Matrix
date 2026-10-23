@@ -223,3 +223,21 @@ test("model picker, /test, /doctor, help and screen keys are wired to real state
   await waitFrame(app, /crucible/i, "the chat screen key");
   assert.equal(frameText(app).includes("PATCH GATE"), false);
 });
+
+test("/model with an argument switches models without crashing", async (t) => {
+  const { app } = setup(t);
+  await waitFrame(app, /S P A T I A L/, "the empty screen");
+
+  await typeLine(app, "/model sonnet");
+  await waitFrame(app, /Claude Sonnet 4\.6/, "the slash command to select Sonnet");
+
+  await typeLine(app, "/model local");
+  const localHeader = await waitFor(() => {
+    const frame = frameText(app);
+    return /Local Forge/.test(frame) && !/Claude Sonnet 4\.6/.test(frame) ? frame : null;
+  });
+  assert.ok(localHeader, "the slash command should switch back to Local Forge");
+
+  await typeLine(app, "/model not-a-model");
+  await waitFrame(app, /MODEL ROUTER/, "an unknown model name to open the picker");
+});

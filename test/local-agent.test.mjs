@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { detectProject } from "../lib/project.mjs";
 import { runLocalAgent } from "../lib/local-agent.mjs";
-import { DEMO_ROOT, copyDemo } from "./helpers.mjs";
+import { DEMO_ROOT, copyDemo, makeTempDir } from "./helpers.mjs";
 
 const TASK = "Fix the off-by-one in the bounds slice in src/processor.py";
 const BUGGY = "context = bounds[0:len(bounds) - 1]";
@@ -144,6 +144,52 @@ test("Local Forge refuses to edit a file whose read was truncated", async (t) =>
   assert.equal(result.error, true);
   assert.match(result.content, /truncated|reads are capped/i);
   assert.equal(readFileSync(file, "utf8"), large);
+});
+
+test("Local Forge refuses to edit non-UTF-8 files", async (t) => {
+  const root = makeTempDir("matrix-invalid-utf8-");
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, "src"));
+  const file = join(root, "src", "processor.py");
+  const bytes = Buffer.concat([
+    Buffer.from("# caf"),
+    Buffer.from([0xe9]),
+    Buffer.from("\ncontext = bounds[0:len(bounds) - 1]\n"),
+  ]);
+  writeFileSync(file, bytes);
+  const project = detectProject(root);
+  const result = await withMatrixHome(join(root, "home"), () =>
+    runLocalAgent({
+      task: TASK,
+      project,
+      autoApprove: true,
+    })
+  );
+  assert.equal(result.error, true);
+  assert.match(result.content, /not valid UTF-8/i);
+  assert.equal(result.editFile, null);
+  assert.deepEqual(readFileSync(file), bytes);
+});
+
+test("Local Forge does not rewrite slice examples inside strings", async (t) => {
+  const root = makeTempDir("matrix-string-slice-");
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, "src"));
+  const file = join(root, "src", "items.js");
+  const source = 'const note = "use items.slice(0, items.length - 1) to trim";\n';
+  writeFileSync(file, source);
+  const project = detectProject(root);
+  const result = await withMatrixHome(join(root, "home"), () =>
+    runLocalAgent({
+      task: "Fix the off-by-one in src/items.js",
+      project,
+      autoApprove: true,
+    })
+  );
+  assert.equal(result.error, false);
+  assert.equal(result.editFile, null);
+  assert.match(result.failure, /No grounded off-by-one/i);
+  assert.equal(readFileSync(file, "utf8"), source);
 });
 
 test("Local Forge refuses to write through a symlink that escapes the workspace", async (t) => {

@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { runModelAgent } from "../lib/model-agent.mjs";
+import { parseToolArgs, runModelAgent } from "../lib/model-agent.mjs";
 import { resolveModel } from "../lib/models.mjs";
 import { detectProject } from "../lib/project.mjs";
 import { DEMO_ROOT, copyDemo, contentChunks, sseResponse, toolCallChunks } from "./helpers.mjs";
@@ -167,6 +167,64 @@ test("a denied model patch is never written and never verified", async (t) => {
   }
 });
 
+test("a denied follow-up edit on the same file is not reported as applied", async (t) => {
+  const demo = copyDemo();
+  t.after(() => demo.cleanup());
+  const project = detectProject(demo.workspace);
+  const previousFetch = globalThis.fetch;
+  let approvals = 0;
+  const { fetchMock } = fakeOpenRouter([
+    () =>
+      sseResponse(
+        toolCallChunks("call_edit_one", "propose_edit", {
+          path: "src/processor.py",
+          start_line: 20,
+          end_line: 21,
+          replacement: "        context = bounds[0:len(bounds)]\n",
+        })
+      ),
+    () =>
+      sseResponse(
+        toolCallChunks("call_edit_two", "propose_edit", {
+          path: "src/processor.py",
+          start_line: 21,
+          end_line: 22,
+          replacement: [
+            "        lo = bounds[0]",
+            "        return bounds[-1] if len(context) == len(bounds) else lo",
+            "        # denied follow-up",
+            "",
+          ].join("\n"),
+        })
+      ),
+    () => sseResponse(contentChunks("Applied the first edit; left the follow-up alone.")),
+  ]);
+  globalThis.fetch = fetchMock;
+  try {
+    const result = await withEnv({ OPENROUTER_API_KEY: "test-key" }, () =>
+      runModelAgent({
+        task: TASK,
+        project,
+        model: resolveModel("sonnet"),
+        requestApproval: async () => {
+          approvals += 1;
+          return approvals === 1 ? "y" : "n";
+        },
+      })
+    );
+    assert.equal(approvals, 2);
+    assert.equal(result.editFile.status, "denied");
+    assert.equal(result.editFile.backupPath, null);
+    assert.match(result.editFile.patch, /denied follow-up/);
+    assert.match(result.applied.patch, /context = bounds\[0:len\(bounds\)\]/);
+    const source = readFileSync(join(demo.workspace, "src", "processor.py"), "utf8");
+    assert.ok(source.includes(FIXED));
+    assert.equal(source.includes("denied follow-up"), false);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test("auto-approve skips the gate but still verifies a real edit", async (t) => {
   const demo = copyDemo();
   t.after(() => demo.cleanup());
@@ -299,6 +357,57 @@ test("a model cannot edit a file whose read was truncated", async (t) => {
   }
 });
 
+test("a model cannot edit a non-UTF-8 file", async (t) => {
+  const root = mkdtempSync(join(tmpdir(), "matrix-model-utf8-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, "src"), { recursive: true });
+  const file = join(root, "src", "processor.py");
+  const original = Buffer.concat([
+    Buffer.from("# caf"),
+    Buffer.from([0xe9]),
+    Buffer.from("\ncontext = bounds[0:len(bounds) - 1]\n"),
+  ]);
+  writeFileSync(file, original);
+  const project = detectProject(root);
+  const previousFetch = globalThis.fetch;
+  const { fetchMock } = fakeOpenRouter([
+    () =>
+      sseResponse(
+        toolCallChunks("call_edit", "propose_edit", {
+          path: "src/processor.py",
+          start_line: 2,
+          end_line: 3,
+          replacement: "context = bounds[0:len(bounds)]\n",
+        })
+      ),
+    () => sseResponse(contentChunks("I refused to edit the non-UTF-8 file.")),
+  ]);
+  globalThis.fetch = fetchMock;
+  const events = [];
+  try {
+    const result = await withEnv({ OPENROUTER_API_KEY: "test-key" }, () =>
+      runModelAgent({
+        task: TASK,
+        project,
+        model: resolveModel("sonnet"),
+        autoApprove: true,
+        onEvent: (event) => events.push(event),
+      })
+    );
+    assert.equal(result.error, false);
+    assert.equal(result.editFile, null);
+    assert.ok(
+      events.some(
+        (event) => event.type === "tool:end" && event.ok === false && /not valid UTF-8/i.test(event.summary)
+      )
+    );
+    assert.equal(events.some((event) => event.type === "applied"), false);
+    assert.deepEqual(readFileSync(file), original);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test("auto-verify runs even when the model tested before editing", async (t) => {
   const demo = copyDemo();
   t.after(() => demo.cleanup());
@@ -386,4 +495,19 @@ test("a missing key fails before any network request", async (t) => {
     globalThis.fetch = previousFetch;
     rmSync(home, { recursive: true, force: true });
   }
+});
+
+test("parseToolArgs handles valid JSON, markdown fences, trailing commas, and noise", () => {
+  assert.deepEqual(parseToolArgs("{}"), {});
+  assert.deepEqual(parseToolArgs(""), {});
+  assert.deepEqual(parseToolArgs(null), {});
+  assert.deepEqual(parseToolArgs('{"path": "src/processor.py"}'), { path: "src/processor.py" });
+  assert.deepEqual(
+    parseToolArgs('```json\n{"path": "src/processor.py", "start_line": 10,}\n```'),
+    { path: "src/processor.py", start_line: 10 }
+  );
+  assert.deepEqual(
+    parseToolArgs('Sure, calling tool: {"query": "bounds",} right now.'),
+    { query: "bounds" }
+  );
 });

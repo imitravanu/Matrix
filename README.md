@@ -90,9 +90,10 @@ Useful flags:
 | `--no-alt`, `--no-sync` | Disable alternate screen / synchronized output. |
 
 Headless runs are deny-by-default: without `--yes`, the edit is reported as denied and the file is
-not changed. Interactive runs stop at the gate unless auto-approve was explicitly enabled.
-Agent runs that combine `--yes` with `--demo` are refused; copy the demo if you want to run an
-automated write against it.
+not changed. Their exit code is non-zero when the result has an error, a failure, or failed, timed-out
+or aborted verification. Interactive runs stop at the gate unless auto-approve was explicitly
+enabled. Agent runs that combine `--yes` with `--demo` are refused; copy the demo if you want to run
+an automated write against it.
 
 ## Keys
 
@@ -112,7 +113,7 @@ automated write against it.
 | `[` `]` | Previous/next file in the scope lens. |
 | `j` / `k` | Previous/next scope in the scope lens. |
 | `?` / `Esc` | Help / close the current overlay. |
-| `Ctrl+C` | Abort an active run; press again to quit when idle. |
+| `Ctrl+C` | Abort an active run or `/test`; press again to quit when idle. |
 
 Slash commands: `/help`, `/new`, `/clear`, `/test`, `/auto`, `/diff`, `/ast`, `/swarm`, `/vision`, `/model`,
 `/undo`, `/session`, `/doctor`, `/quit`.

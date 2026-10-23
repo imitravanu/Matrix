@@ -15,6 +15,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { parseArgv, HELP_TEXT } from "../lib/cli.mjs";
 import { detectProject, readFileSafe } from "../lib/project.mjs";
+import { resolveInside } from "../lib/workspace.mjs";
 import { parseScopes } from "../lib/scope.mjs";
 import { runLocalAgent } from "../lib/local-agent.mjs";
 import { runModelAgent } from "../lib/model-agent.mjs";
@@ -58,9 +59,15 @@ function firstSource(project, preferred = null) {
 
 function sourceData(project, file) {
   if (!file) return { file: null, source: "", parsed: null };
-  const readable = readFileSafe(join(project.root, file));
-  if (!readable.ok) return { file, source: "", parsed: null, error: readable.error };
-  return { file, source: readable.content, parsed: parseScopes(readable.content, file) };
+  const resolved = resolveInside(project.root, file);
+  if (!resolved.ok) return { file, source: "", parsed: null, error: resolved.error };
+  const readable = readFileSafe(resolved.path);
+  if (!readable.ok) return { file: resolved.rel, source: "", parsed: null, error: readable.error };
+  return {
+    file: resolved.rel,
+    source: readable.content,
+    parsed: parseScopes(readable.content, resolved.rel),
+  };
 }
 
 function sizeFrom(options, fallback = { columns: 100, rows: 30 }) {

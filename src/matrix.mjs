@@ -37,7 +37,7 @@ import { detectProject, readFileSafe } from "../lib/project.mjs";
 import { parseScopes, scopeAtLine } from "../lib/scope.mjs";
 import { runTests } from "../lib/process.mjs";
 import { isOpenRouterAvailable } from "../lib/openrouter.mjs";
-import { MODELS, estimateCost, formatCost, modelIndex, resolveModel } from "../lib/models.mjs";
+import { LOCAL_MODEL, MODELS, estimateCost, formatCost, modelIndex, resolveModel } from "../lib/models.mjs";
 import { createRunController } from "../lib/controller.mjs";
 import { applySwarmEvent, createSwarmState, focusLane } from "../lib/swarm.mjs";
 import { newRunId, saveSession, loadLatestSession, listSessions, matrixHome } from "../lib/session.mjs";
@@ -305,7 +305,14 @@ export function ScreenView({
     });
   }
   if (view === "model") {
-    return h(ModelScreen, { models, selected: pickerIndex, hasKey, width, height });
+    return h(ModelScreen, {
+      models,
+      selected: pickerIndex,
+      activeId: model?.id ?? "local",
+      hasKey,
+      width,
+      height,
+    });
   }
   if (view === "help") {
     return h(HelpScreen, { width, height });
@@ -1366,9 +1373,19 @@ export function MatrixApp({
           return;
         }
       }
-      if (key.upArrow || ch === "k") setPickerIndex((index) => (index - 1 + MODELS.length) % MODELS.length);
-      else if (key.downArrow || ch === "j") setPickerIndex((index) => (index + 1) % MODELS.length);
-      else if (key.return) {
+      if (key.upArrow || ch === "k") {
+        setPickerIndex((index) => (index - 1 + MODELS.length) % MODELS.length);
+      } else if (key.downArrow || ch === "j") {
+        setPickerIndex((index) => (index + 1) % MODELS.length);
+      } else if (key.pageUp) {
+        setPickerIndex((index) => Math.max(0, index - 5));
+      } else if (key.pageDown) {
+        setPickerIndex((index) => Math.min(MODELS.length - 1, index + 5));
+      } else if (key.home || ch === "g") {
+        setPickerIndex(0);
+      } else if (key.end || ch === "G") {
+        setPickerIndex(MODELS.length - 1);
+      } else if (key.return) {
         const chosen = MODELS[Math.min(Math.max(0, pickerIndex), MODELS.length - 1)];
         setModel(chosen);
         modelRef.current = chosen;
@@ -1376,7 +1393,7 @@ export function MatrixApp({
         if (chosen.remote && !isOpenRouterAvailable()) {
           flash(`${chosen.name} needs an OpenRouter key · Local Forge remains available`, 7000);
         } else {
-          flash(`model · ${chosen.name}`);
+          flash(`model · ${chosen.name}${chosen.free ? " · free tier" : ""}`);
         }
       } else if (key.escape || ch === "m") {
         setScreen(returnScreen);

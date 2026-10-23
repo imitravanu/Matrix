@@ -1,13 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { createRunController } from "../lib/controller.mjs";
 import { resolveModel } from "../lib/models.mjs";
 import { detectProject } from "../lib/project.mjs";
-import { runsDir } from "../lib/session.mjs";
-import { copyDemo, contentChunks, sseResponse, toolCallChunks } from "./helpers.mjs";
+import { backupFile, runsDir } from "../lib/session.mjs";
+import { copyDemo, contentChunks, makeTempDir, sseResponse, toolCallChunks } from "./helpers.mjs";
 
 const TASK = "Fix the off-by-one in the bounds slice in src/processor.py";
 const BUGGY = "context = bounds[0:len(bounds) - 1]";
@@ -233,4 +233,39 @@ test("a later run that applies nothing preserves the previous undo stack", async
   assert.equal(undone.ok, true);
   assert.deepEqual(undone.files, ["src/processor.py"]);
   assert.equal(readFileSync(file, "utf8"), before);
+});
+
+test("restored session undo writes the backup's exact non-UTF-8 bytes", (t) => {
+  const root = makeTempDir("matrix-undo-bytes-");
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const home = join(root, "home");
+  envHome(t, home);
+  const file = join(root, "processor.py");
+  const original = Buffer.concat([
+    Buffer.from("# caf"),
+    Buffer.from([0xe9]),
+    Buffer.from("\ncontext = bounds[0:len(bounds) - 1]\n"),
+  ]);
+  writeFileSync(file, original);
+  const backup = backupFile(file, { home });
+  assert.ok(backup?.path);
+
+  const updatedText = "caf\uFFFD\ncontext = bounds[0:len(bounds)]\n";
+  writeFileSync(file, updatedText);
+  const controller = createRunController({ home });
+  t.after(() => controller.dispose());
+  const restored = controller.restoreFromSession(
+    {
+      absPath: file,
+      updatedText,
+      original: "fallback text",
+      backupPath: backup.path,
+      file: "processor.py",
+    },
+    { root }
+  );
+  assert.equal(restored, true);
+  const undone = controller.undoLast();
+  assert.equal(undone.ok, true);
+  assert.deepEqual(readFileSync(file), original);
 });

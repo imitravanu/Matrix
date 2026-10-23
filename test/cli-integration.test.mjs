@@ -110,6 +110,13 @@ test("version, help, doctor and sessions are real CLI paths", (t) => {
   assert.match(demoYes.stderr, /refusing --yes on the bundled demo/);
 });
 
+test("vision refuses --file paths outside the workspace", (t) => {
+  const home = tempHome(t);
+  const escaped = runCli(["vision", "scope", "--demo", "--file", "../README.md"], { home });
+  assert.equal(escaped.status, 1);
+  assert.match(escaped.stderr, /path escapes workspace/);
+});
+
 test("smoke, dump and PNG export run against the bundled demo", (t) => {
   const home = tempHome(t);
   const smoke = runCli(["smoke", "--demo", "--json"], { home });
