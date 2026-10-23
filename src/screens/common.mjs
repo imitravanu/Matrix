@@ -114,8 +114,8 @@ export function KeyHints({ screen = "chat", running = false, autoApprove = false
     hint = "Esc close · ? toggle · 1-6 switch screen";
   } else {
     hint = running
-      ? "Ctrl+C abort · PgUp scroll · f fold · u undo · 4 swarm"
-      : "Enter send · / commands · ? keys · 1-6 screens · m model";
+      ? "Ctrl+C abort · PgUp scroll · f fold · 4 swarm"
+      : "Enter send · / commands · ? keys · 1-6 screens · m model · u undo";
   }
   return h(
     Text,

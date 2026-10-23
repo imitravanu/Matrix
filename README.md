@@ -107,7 +107,7 @@ an automated write against it.
 | `PgUp` / `PgDn` | Scroll chat, diff or test output. |
 | `m` | Open the model router. |
 | `v` / `e` | Cycle Vision mode / export the current canvas as PNG. |
-| `f` | Fold the diff or reasoning. |
+| `f` | Fold the diff or reasoning (while agent is running or at patch gate). |
 | `u` | Undo the last applied patch (when its fingerprint still matches). |
 | `y` / `a` / `n` | Apply / apply and auto-approve / deny. |
 | `[` `]` | Previous/next file in the scope lens. |
@@ -115,8 +115,8 @@ an automated write against it.
 | `?` / `Esc` | Help / close the current overlay. |
 | `Ctrl+C` | Abort an active run or `/test`; press again to quit when idle. |
 
-Slash commands: `/help`, `/new`, `/clear`, `/test`, `/auto`, `/diff`, `/ast`, `/swarm`, `/vision`, `/model`,
-`/undo`, `/session`, `/doctor`, `/quit`.
+Slash commands: `/help`, `/new`, `/clear`, `/test`, `/auto`, `/diff`, `/thoughts`, `/ast`, `/swarm`, `/vision`, `/model`,
+`/plan`, `/undo`, `/session`, `/doctor`, `/export`, `/quit`.
 
 - `/new` starts a fresh session and clears metrics, prompt history, the saved patch, undo and auto-approve.
 - `/clear` clears the transcript but keeps the session and its undo history.

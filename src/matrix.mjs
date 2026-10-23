@@ -1250,6 +1250,14 @@ export function MatrixApp({
         case "/export":
           exportVision();
           break;
+        case "/thoughts":
+        case "/reasoning":
+          setThoughtsExpanded((value) => {
+            const next = !value;
+            flash(next ? "reasoning thoughts expanded" : "reasoning thoughts collapsed");
+            return next;
+          });
+          break;
         case "/model":
           if (arg) {
             const found = resolveModel(arg);
@@ -1442,7 +1450,7 @@ export function MatrixApp({
         }
         return;
       }
-      if (ch === "f") setDiffExpanded((value) => !value);
+      if (ch === "f" || ch === "F") setDiffExpanded((value) => !value);
       if (key.upArrow || ch === "k") setPermissionScroll((offset) => Math.max(0, offset - 1));
       if (key.downArrow || ch === "j") setPermissionScroll((offset) => Math.min(Math.max(0, permissionBounds.total - permissionBounds.height), offset + 1));
       if (key.pageUp) setPermissionScroll((offset) => Math.max(0, offset - Math.max(2, Math.floor(permissionBounds.height / 2))));
@@ -1545,8 +1553,8 @@ export function MatrixApp({
       else flash("no applied patch to undo");
       return;
     }
-    if (ch === "f" && inputState.value.length === 0) {
-      if (runningRef.current && liveRef.current?.editFile) setDiffExpanded((value) => !value);
+    if (runningRef.current && (ch === "f" || ch === "F")) {
+      if (liveRef.current?.editFile) setDiffExpanded((value) => !value);
       else setThoughtsExpanded((value) => !value);
       return;
     }

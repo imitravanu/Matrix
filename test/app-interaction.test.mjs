@@ -241,3 +241,25 @@ test("/model with an argument switches models without crashing", async (t) => {
   await typeLine(app, "/model not-a-model");
   await waitFrame(app, /MODEL ROUTER/, "an unknown model name to open the picker");
 });
+
+test("typing text starting with 'f' or 'F' preserves the initial letter and does not swallow it", async (t) => {
+  const { app } = setup(t);
+  await waitFrame(app, /S P A T I A L/, "the empty screen");
+
+  for (const ch of "fix the processor") {
+    app.stdin.write(ch);
+    await sleep(10);
+  }
+  await waitFrame(app, /fix the processor/, "the input line containing the full text with lowercase f");
+
+  // Clear line with Ctrl+U
+  app.stdin.write("\x15");
+  await sleep(20);
+
+  for (const ch of "Fix the slice bug") {
+    app.stdin.write(ch);
+    await sleep(10);
+  }
+  await waitFrame(app, /Fix the slice bug/, "the input line containing the full text with uppercase F");
+});
+

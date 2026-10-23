@@ -19,7 +19,7 @@ const KEYS = [
   ["3 · 4", "patch gate / swarm lanes"],
   ["5 · 6", "scope lens / pixel vision"],
   ["m · v", "model router / cycle vision view"],
-  ["f · u", "fold diff or reasoning / undo last applied patch"],
+  ["f · u", "fold diff (while running) / undo last applied patch"],
   ["y · a · n", "apply patch / apply all this run / deny"],
   ["[ ]", "previous / next file in the scope lens"],
   ["j k", "previous / next scope in the scope lens"],
