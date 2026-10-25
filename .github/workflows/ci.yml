@@ -19,8 +19,8 @@ jobs:
     # Keep default tests away from runner state and provider configuration.
     # Provider tests supply their own mocked responses and fake credentials.
     env:
-      HOME: ${{ runner.temp }}/matrix-ci-home
-      MATRIX_HOME: ${{ runner.temp }}/matrix-ci-home/.matrix
+      HOME: /tmp/matrix-ci-home
+      MATRIX_HOME: /tmp/matrix-ci-home/.matrix
       OPENROUTER_API_KEY: ""
       MATRIX_API_KEY: ""
       OPENAI_API_KEY: ""
