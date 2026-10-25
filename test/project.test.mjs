@@ -160,10 +160,12 @@ test("100,000-entry synthetic trees obey small independent sync/async work caps"
     invalidateProjectCache(root);
     rmSync(root, { recursive: true, force: true });
   });
-  const source = join(root, "source.txt");
-  writeFileSync(source, "x\n");
-  for (let index = 0; index < 100_000; index++) {
-    linkSync(source, join(root, `f${String(index).padStart(6, "0")}.txt`));
+  // Keep each inode below filesystem link-count limits (Ubuntu CI commonly
+  // rejects roughly 65,000 links to one source) while retaining 100,000 files.
+  const sources = Array.from({ length: 4 }, (_, index) => join(root, `source-${index}.txt`));
+  for (const source of sources) writeFileSync(source, "x\n");
+  for (let index = 0; index < 100_000 - sources.length; index++) {
+    linkSync(sources[index % sources.length], join(root, `f${String(index).padStart(6, "0")}.txt`));
   }
   const budgets = { maxEntries: 64, maxDirectories: 2, maxFiles: 10 };
   const syncScan = walkFiles(root, budgets);

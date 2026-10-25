@@ -109,6 +109,33 @@ async function pressUntilFrame(app, input, pattern, label) {
   return frame;
 }
 
+async function scrollUntilFrame(app, input, pattern, label, { maxSteps = 30 } = {}) {
+  let current = frameText(app);
+  for (let step = 0; step < maxSteps; step++) {
+    if (pattern.test(current)) return current;
+    const previous = current;
+    app.stdin.write(input);
+    // Wait for each scroll to publish before sending another. Otherwise Ink can
+    // coalesce several keys and skip the frame containing the expected text.
+    current = await waitFor(
+      () => {
+        const frame = frameText(app);
+        return pattern.test(frame) || frame !== previous ? frame : null;
+      },
+      { timeoutMs: 2000, intervalMs: 20 },
+    );
+    assert.ok(
+      current,
+      `timed out scrolling for ${label}\nlast frame:\n${frameText(app).slice(-3000)}`,
+    );
+  }
+  assert.ok(
+    pattern.test(current),
+    `scrolling did not reach ${label}\nlast frame:\n${current.slice(-3000)}`,
+  );
+  return current;
+}
+
 async function clearPrompt(app, value, prompt = "matrix ❯") {
   app.stdin.write("\x15");
   await waitInput(app, value, { prompt, present: false });
@@ -366,9 +393,12 @@ test("agent verification failures expose retained output with the shared expansi
   assert.ok(verification.output.length > 8);
   assert.equal(verification.outputLineCount, verification.output.length);
   assert.equal(verification.outputTruncated, false);
+  assert.ok(verification.output.some((line) => /E\s+assert 1 == 14/.test(line)));
 
   app.stdin.write("\x1bo");
-  await waitFrame(app, /E\s+assert 1 == 14/, "expanded agent output");
+  // Pytest wrapping differs by version and terminal width. Scroll to the
+  // earlier assertion instead of assuming expanded rows fit in one viewport.
+  await scrollUntilFrame(app, "\u001b[5~", /E\s+assert 1 == 14/, "expanded agent output");
 });
 
 test("direct /test retains the latest 400 lines, wraps output, and scrolls without disturbing the prompt", async (t) => {
