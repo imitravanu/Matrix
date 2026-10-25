@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": true,
+    "skipLibCheck": true,
+    "strict": false,
+    "target": "ES2024",
+    "types": ["node"]
+  },
+  "files": [
+    "lib/contracts.mjs",
+    "lib/project.mjs",
+    "lib/controller.mjs",
+    "src/result-projection.mjs",
+    "src/event-reducer.mjs",
+    "test/public-contracts.test.mjs"
+  ]
+}

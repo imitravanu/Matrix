@@ -14,11 +14,13 @@ import {
   sanitizeText,
   stripAnsi,
   truncateToWidth,
+  wrapCodeToWidth,
   wrapToWidth,
 } from "../lib/text.mjs";
 
 test("stripAnsi removes SGR, OSC, kitty and cursor sequences", () => {
-  const input = "\x1b[31mred\x1b[0m \x1b]8;;https://x\x07link\x1b]8;;\x07 \x1b_Gi=1;AAAA\x1b\\ \x1b[?25l";
+  const input =
+    "\x1b[31mred\x1b[0m \x1b]8;;https://x\x07link\x1b]8;;\x07 \x1b_Gi=1;AAAA\x1b\\ \x1b[?25l";
   assert.equal(stripAnsi(input), "red link  ");
 });
 
@@ -62,6 +64,15 @@ test("wrapToWidth keeps indentation on continuation lines", () => {
   assert.ok(parts.length >= 2);
   assert.ok(parts[0].startsWith("    "));
   assert.ok(parts[1].startsWith("    "));
+});
+
+test("wrapCodeToWidth preserves every character and repeated spaces", () => {
+  const source = "  const  label = 'リンゴabcdefghij';  ";
+  const parts = wrapCodeToWidth(source, 10);
+  assert.ok(parts.length > 2);
+  assert.equal(parts.join(""), source);
+  for (const line of parts) assert.ok(displayWidth(line) <= 10);
+  assert.deepEqual(wrapCodeToWidth("a\n\nb", 10), ["a", "", "b"]);
 });
 
 test("sanitizeText and oneLine remove terminal-corrupting input", () => {

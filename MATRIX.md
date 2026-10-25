@@ -13,46 +13,76 @@ Matrix is built around four constraints:
    result.
 2. **Nothing writes without a decision.** Every file-changing proposal passes through a gate.
    Headless runs are deny-by-default. Remote models get the same gate as the local engine.
-3. **Show the bytes and the result.** The UI renders the actual hunk, the actual test output, the
-   actual token usage, and the actual file that changed. Empty or unavailable data is shown as
-   empty, not as a decorative statistic.
+3. **Show the bytes and the result.** The UI renders the actual hunk, parsed verification results,
+   provider token usage when supplied, and the actual file that changed. Empty or unavailable data
+   must not become a decorative statistic. Retained output expands for complete inspection, and
+   usage/cost provenance remains explicit.
 4. **Keep the visual identity, but make it earn its pixels.** The phosphor palette, spatial screens
    and pixel canvas remain. The canvases are now driven by the parsed workspace and the live run.
 
 ## Runtime map
 
-| Area | File | Responsibility |
-| --- | --- | --- |
-| CLI | `bin/matrix.mjs` | Interactive, headless, tour, dump, vision, smoke, bench, doctor, sessions. |
-| CLI parser | `lib/cli.mjs` | Subcommands, flags, validation, help text. |
-| Project index | `lib/project.mjs` | Workspace walk, language counts, test-runner detection, git context. |
-| Structural parser | `lib/scope.mjs` | Python indentation scopes; masked JS/TS brace scopes; Rust/Go/Ruby declarations. |
-| Task layer | `lib/task.mjs` | Intent classification, candidate scoring, grounded search results. |
-| Local engine | `lib/local-agent.mjs` | Deterministic inspect/propose/apply/verify loop. |
-| Remote engine | `lib/model-agent.mjs`, `lib/openrouter.mjs` | Streaming OpenRouter loop, audited tools, usage accounting. |
-| Controller | `lib/controller.mjs` | One active run, approval lifecycle, abort, undo stack, session re-arm. |
-| Safety | `lib/workspace.mjs` | Path containment, atomic writes, mode preservation. |
-| Diff | `lib/diff.mjs` | Line diff and hunks used by the gate and cards. |
-| Process | `lib/process.mjs` | Bounded child processes, streaming output, test-result parsing. |
-| Sessions | `lib/session.mjs` | `MATRIX_HOME`, atomic JSON sessions, backups, run event logs. |
-| UI | `src/matrix.mjs` | Application state, key handling, event reducer, screen composition. |
-| Cards | `src/cards.mjs` | Pure card builders; no terminal or filesystem side effects. |
-| Screens | `src/screens/*.mjs` | Empty, chat, permission, swarm, scope and vision views. |
-| Renderer | `src/render.mjs` | `Frame`, screen renderer, geometry checks (`checkFrame`). |
-| Panels | `lib/graph.mjs` | Real workspace/scope/telemetry canvases and adaptive headers. |
-| Raster | `lib/raster.mjs` | Pixel buffer, primitives, half-block truecolor, PNG encoder. |
-| Swarm state | `lib/swarm.mjs` | Projects run events into three lanes with bounded logs. |
-| Doctor | `lib/doctor.mjs` | Runtime, workspace, git, test, credential, session-home and demo checks. |
+| Area              | File                                                 | Responsibility                                                                          |
+| ----------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| CLI               | `bin/matrix.mjs`                                     | Interactive, headless, tour, dump, vision, smoke, bench, doctor, sessions.              |
+| CLI parser        | `lib/cli.mjs`                                        | Subcommands, flags, validation, help text.                                              |
+| Project index     | `lib/project.mjs`                                    | Budgeted workspace walk, language counts, test-runner detection, git context.           |
+| Structural parser | `lib/scope.mjs`                                      | Python indentation scopes; masked JS/TS brace scopes; Rust/Go/Ruby declarations.        |
+| Task layer        | `lib/task.mjs`                                       | Intent classification, candidate scoring, grounded search results.                      |
+| Local engine      | `lib/local-agent.mjs`                                | Deterministic inspect/propose/apply/verify loop.                                        |
+| Remote engine     | `lib/model-agent.mjs`, `lib/openrouter.mjs`          | Streaming OpenRouter loop, audited tools, usage accounting.                             |
+| Controller        | `lib/controller.mjs`                                 | One active run, approval lifecycle, abort, undo stack, session re-arm.                  |
+| Safety            | `lib/workspace.mjs`                                  | Path containment, atomic writes, mode preservation.                                     |
+| Diff              | `lib/diff.mjs`                                       | Line diff and hunks used by the gate and cards.                                         |
+| Process           | `lib/process.mjs`                                    | Bounded child processes, streaming output, test-result parsing.                         |
+| Sessions          | `lib/session.mjs`                                    | `MATRIX_HOME`, atomic JSON sessions, backups, run event logs.                           |
+| Application       | `src/matrix.mjs`                                     | React state/effects, controller and I/O composition; no presentational frame ownership. |
+| Presentation      | `src/frame.mjs`, `src/views.mjs`                     | `Frame`/`ScreenView`, primary/all-view routing, and shared scope-source definitions.    |
+| Interaction       | `src/keyboard.mjs`, `src/event-reducer.mjs`          | Pure keyboard decisions and React-independent run-event effect reduction.               |
+| UI projections    | `src/session-codec.mjs`, `src/result-projection.mjs` | Transcript/session, usage, retained-output, and public result projections.              |
+| Cards             | `src/cards.mjs`                                      | Pure card builders; no terminal or filesystem side effects.                             |
+| Screens           | `src/screens/*.mjs`                                  | Empty, chat, permission, swarm, scope and vision views.                                 |
+| Renderer          | `src/render.mjs`                                     | Render-only frame imports, fixed geometry, and geometry checks (`checkFrame`).          |
+| Panels            | `lib/graph.mjs`                                      | Real workspace/scope/telemetry canvases and adaptive headers.                           |
+| Raster            | `lib/raster.mjs`                                     | Pixel buffer, primitives, half-block truecolor, PNG encoder.                            |
+| Swarm state       | `lib/swarm.mjs`                                      | Projects run events into three lanes with bounded logs.                                 |
+| Doctor            | `lib/doctor.mjs`                                     | Runtime, workspace, git, test, credential, session-home and demo checks.                |
+| Credentials       | `lib/credentials.mjs`                                | One transport-free provider/key lookup shared by execution and cached UI availability.  |
+| Public contracts  | `lib/contracts.mjs`                                  | Type-only JSDoc project/result/event/controller contracts; no runtime dependency.       |
+| Engineering gates | `scripts/check-*.mjs`                                | Recursive syntax checks, fail-closed coverage ratchets, and dry-run pack inspection.    |
 
 The UI is split so that card construction can be tested without a terminal, and so screen
 rendering can be checked at fixed dimensions with `MATRIX_COLS`/`MATRIX_ROWS` or `checkFrame`.
+Render-only consumers import `src/frame.mjs` and `src/views.mjs` through `src/render.mjs`, never the
+application orchestrator. An isolated ESM load-hook regression proves that path does not load the
+controller, local/remote agents, or provider transport. `src/matrix.mjs` retains compatibility exports
+for existing callers. `ChatScreen` owns a bounded per-instance layout cache keyed by message identity/signature, width,
+fold state, and active-spinner state. Cold views compute exact line-count metadata for scrolling;
+warm views reuse stable records and construct only visible line arrays. `buildChatLines` remains the
+uncached pure reference. Collapsed reasoning above 65,536 UTF-16 code units uses a bounded preview
+instead of wrapping the complete source; expanded and streaming reasoning remain complete. History appends preserve
+existing projected message identities on the ordinary under-budget path.
+
+The wordmark stops its animation subscription at `REST_TIME` and memoizes its settled raster. Run
+animation is active only for visible chat/swarm content, and reduced-motion/screen-reader modes stay
+static. Credential availability is cached across renders and refreshed by explicit model/picker
+actions; provider execution still performs its own credential lookup.
+
+The index applies file-count, depth, byte, directory, and entry work budgets with incremental
+directory reads. Manifests have byte caps and identity revalidation; git status distinguishes
+`clean`, `dirty`, `truncated`, `unavailable`, and `not-a-repo` rather than silently treating overflow
+as clean. Equivalent asynchronous scans deduplicate by canonical root/configuration, snapshots have
+an explicit freshness policy, and task/test/write/undo paths invalidate stale state. Interactive
+initial detection and execution refreshes stay off the render path; non-render CLI paths may use the
+synchronous API.
 
 ## A Local Forge run
 
 A typical task such as “fix the off-by-one in the bounds slice in src/processor.py” follows this
 path:
 
-1. `detectProject` builds a bounded index (file list, language counts, test command, git branch).
+1. A bounded project index supplies the file list, language counts, test command, and git branch;
+   the interactive app obtains it through `detectProjectAsync` before execution.
 2. `classifyTask` chooses an intent: fix, test, explain, rename or inspect.
 3. The local engine emits a plan and indexes candidates. It searches for explicit paths, identifiers,
    slice expressions and task keywords.
@@ -75,52 +105,89 @@ general-purpose language model and does not pretend to be one.
 Remote models use the OpenRouter chat-completions API with streaming enabled. The agent exposes a
 small audited tool surface:
 
-| Tool | Effect |
-| --- | --- |
-| `list_files` | Read-only workspace listing. |
-| `search_repo` | Read-only literal search. |
-| `read_file` | Read-only bounded file read. |
-| `propose_edit` | Builds a real validated patch; never writes by itself. |
-| `run_tests` | Runs the detected test command. |
+| Tool           | Effect                                                                                      |
+| -------------- | ------------------------------------------------------------------------------------------- |
+| `list_files`   | Read-only workspace listing.                                                                |
+| `search_repo`  | Read-only literal search.                                                                   |
+| `read_file`    | Read-only bounded file read; known credential and VCS-internal paths are refused.           |
+| `propose_edit` | Builds a real validated patch; never writes by itself.                                      |
+| `write_file`   | Creates or rewrites a text file through the same proposal gate; binary targets are refused. |
+| `run_tests`    | Runs the detected executable-plus-argv test plan with a scrubbed environment.               |
+
+Arbitrary `run_command` shell execution is **disabled** and is not advertised to the model. A legacy
+call is hard-denied without spawning a process: shell effects cannot be diffed, contained, backed up,
+or undone by Matrix. Reintroducing commands requires a separately designed explicit execution and
+sandbox policy, not a destructive-command denylist.
+
+Repository tests require workspace and exact test-plan trust before spawning. Interactive first-use
+approval shows the resolved executable, argv, cwd, and current npm `pretest`/`test`/`posttest` scripts.
+Trust is scoped by SHA-256 workspace and plan/script hashes and revalidated during the approval window.
+Headless tests require the dedicated `--allow-tests` decision for the first exact plan in an invocation;
+`--yes` applies only to edit approval. Audit logs record `execution:start` and `execution:end` without
+environment or process output, and retained output is redacted. Start-audit persistence failures prevent
+execution; no OS sandbox is implied.
+
+The transport has configurable connection, idle-stream and total deadlines, bounded HTTP-error/SSE
+buffers, safe pre-stream retries, and reader cancellation. Successful responses must be SSE and end
+with `[DONE]`; malformed or truncated streams become errors instead of clean completions.
+
+Tool calls have stable identities across indexed and unindexed deltas, strict plain-object argument
+validation, per-call/response/run byte budgets, and model-context preflight. Tool results are truncated
+with valid JSON envelopes and explicit metadata rather than sliced JSON text.
 
 A `propose_edit` tool call creates a proposal, requests approval, and only then writes. The same
 controller gate is used for local and remote runs, so denying a remote edit leaves the file
 untouched. If the model edits a file but forgets `run_tests` — or tested before the latest edit —
-the agent runs verification after the round. Usage and cost are taken from OpenRouter's response and
-from the model registry pricing, not invented by the renderer.
+the agent runs verification after the round. Usage and cost carry `provider`, `estimated`, `mixed`,
+or `unavailable` provenance, with provider charges preferred and unknown cost left `null` rather than
+rendered as `$0.00`. Follow-up history is bounded to 12 textual messages and 32 KiB; runs without
+`extraContext` are deliberately stateless.
 
-If no OpenRouter key is configured, a remote headless run exits with an error before making a
-network request. In the interactive UI, selecting a remote model produces a warning; Local Forge
-remains selected and usable. Matrix comes pre-configured with top verified zero-cost free models
-(`openrouter/free`, `nvidia/nemotron-3.5-lightning:free`, `cohere/north-mini-code:free`,
-`poolside/laguna-s-2.1:free`, `recursive/flint-v1.0:free`, `liquid/lfm-2.5-2.6b:free`,
-`google/gemma-4-31b-it:free`) with full tool-calling capabilities.
+If no OpenRouter key is configured, an OpenRouter headless run exits with an error before making a
+network request. Ollama models use `OLLAMA_HOST` (default `http://127.0.0.1:11434`) and do not need
+an OpenRouter key. `OLLAMA_HOST` never reroutes OpenRouter models. Custom `MATRIX_API_BASE` uses
+`MATRIX_API_KEY`; `OPENAI_BASE_URL` uses `OPENAI_API_KEY`, so one provider's credential is not sent
+to another provider's origin. Selecting an unknown explicit model is an error in CLI/headless mode.
+
+The registry includes zero-listed-cost models (`openrouter/free`, `nvidia/nemotron-3.5-lightning:free`,
+`cohere/north-mini-code:free`, `poolside/laguna-s-2.1:free`, `recursive/flint-v1.0:free`,
+`liquid/lfm-2.5-2.6b:free`, `google/gemma-4-31b-it:free`). Registry prices, context sizes and tool
+capabilities are static metadata, not a live provider verification. The UI labels estimates and
+unknown dynamic-Ollama capabilities accordingly.
 
 ## Agent event protocol
 
 The renderer, swarm lanes, session log and verification cards all consume the same events:
 
-| Event | Meaning |
-| --- | --- |
-| `run:start` | Mode, model, task and initial plan. |
-| `phase` | Current phase (planning, reading, editing, applying, verifying, complete, failed). |
-| `plan`, `plan:step` | Plan and per-step status updates. |
-| `thought`, `content` | Streaming reasoning and answer text. |
-| `tool:start`, `tool:end` | Audited tool lifecycle with a summary and optional card data. |
-| `proposal` | A validated patch with file, hunk, stats and rationale. |
-| `approval:request`, `approval:result` | The gate and its decision. |
-| `applied` | The write actually happened; includes backup path and stats. |
-| `verify:start`, `verify:line`, `verify:end` | Real test execution and parsed totals. |
-| `verify:skipped` | No runner was detected, so verification did not happen. |
-| `usage` | Provider token usage; only emitted when available. |
-| `metrics` | Elapsed time, rounds, tool calls and cost. |
-| `result` | The final public result card. |
-| `error` | A real failure, with an aborted flag when applicable. |
-| `abort:requested` | The user requested cancellation while a run was active. |
-| `undo` | Files restored by the undo stack. |
-| `done` | The run is finished, whether successful, denied, failed or aborted. |
+| Event                                       | Meaning                                                                                       |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `run:start`                                 | Mode, model, task and initial plan.                                                           |
+| `phase`                                     | Current phase (planning, reading, editing, applying, verifying, complete, failed, aborted).   |
+| `plan`, `plan:step`                         | Plan and per-step status updates.                                                             |
+| `thought`, `content`                        | Streaming reasoning and answer text.                                                          |
+| `tool:start`, `tool:end`                    | Audited tool lifecycle with a summary and optional card data.                                 |
+| `proposal`                                  | A validated patch with file, hunk, stats and rationale.                                       |
+| `approval:request`, `approval:result`       | The gate and its decision.                                                                    |
+| `applied`                                   | The write actually happened; includes backup path and stats.                                  |
+| `verify:start`, `verify:line`, `verify:end` | Real test execution and parsed totals.                                                        |
+| `verify:skipped`                            | No runner was detected, so verification did not happen.                                       |
+| `execution:start`, `execution:end`          | Exact test execution metadata, trust decision, and terminal status; no environment or output. |
+| `trust:decision`                            | Denied/blocked test-trust decision with safe reason metadata.                                 |
+| `usage`                                     | Provider token usage; only emitted when available.                                            |
+| `metrics`                                   | Elapsed time, rounds, tool calls and cost.                                                    |
+| `result`                                    | The final public result card.                                                                 |
+| `error`                                     | A real failure, with an aborted flag when applicable.                                         |
+| `abort:requested`                           | The user requested cancellation while a run was active.                                       |
+| `undo`                                      | Files restored by the undo stack.                                                             |
+| `done`                                      | The run is finished, whether successful, denied, failed or aborted.                           |
 
 Logs in the swarm state are bounded, so a noisy stream cannot grow the UI without limit.
+
+`lib/outcome.mjs` is the shared terminal classifier: `ok` is true only for `success` or non-error
+`denied`. Failed, unverified, timed-out, aborted, and budget-exhausted runs are never projected as
+success. Controller, both agents, swarm, CLI, and interactive result/session objects expose the same
+`ok`, `status`, `outcome`, `failure`, and timing fields. Terminal order is `metrics → phase → result →
+done`, so `done` is always last and final metrics are available before persistence.
 
 ## Approval and undo invariants
 
@@ -130,19 +197,34 @@ The safety rules are enforced in code, not just in documentation:
 - Indexing skips symlinks, and reads are capped. A truncated read is never editable because writing
   it back would delete the unseen tail.
 - Before a write, the path is re-resolved and the current bytes are compared with the approved
-  proposal. A file that changed or grew after approval is refused, not overwritten.
+  proposal. A file that changed or grew after approval is refused, not overwritten. Creation is
+  permitted only when no filesystem entry exists, both when proposed and again after approval;
+  existing binary, unreadable, directory and symlink targets are never treated as new files.
 - Writes preserve the original file mode and use a temporary file plus rename.
+- Diff generation preserves EOL and final-newline transitions with `\ EOL:` and `\ Final newline:`
+  metadata plus whole-file review rows; standard no-newline markers are also parsed. Mixed-EOL inputs
+  are refused rather than silently normalizing unchanged lines.
 - A backup is created before an approved write.
 - The controller records `original`, `updatedText`, `absPath`, `backupPath`, patch stats and the
-  hunk. Undo validates every target first, then restores the files in the last applied edit. Multiple
-  edits to one file are coalesced so the first original and final fingerprint produce one exact undo.
-- Undo compares the current file bytes with the stored post-patch fingerprint. If someone else
-  changed the file, undo refuses instead of overwriting their work.
+  hunk. Undo state is published on the first applied event. Undo validates every target first, then
+  restores files in the last applied edit set; successful partial restorations are journaled immediately
+  so remaining work can be retried. Multiple edits to one file are coalesced so the first original and
+  final fingerprint produce one exact undo.
+- Undo compares the complete current file bytes and size with the stored post-patch fingerprint,
+  without using the agent's capped text reader. If someone else changed or appended to the file,
+  undo refuses instead of overwriting their work.
 - A denied proposal is not stored as an applied patch and produces no undo entry.
-- Session resume re-arms undo only when the stored backup or original and the fingerprint are
-  available and the current file still matches. A resumed session that cannot prove this is honest
-  about not offering undo.
+- Session resume re-arms a versioned `undoRun` only when every stored post-image and recovery source
+  still matches. Multi-file edits, same-file coalescing, created files, and partial retry are covered;
+  legacy `lastPatch` records migrate only when their metadata is unambiguous.
 - A test failure is a reported result. It does not cause an automatic revert.
+- Test children receive a scrubbed environment without common credentials or loader hooks. This is
+  not a filesystem/network sandbox; repository test code remains arbitrary user-selected code.
+- Test output uses independent UTF-8 stream decoders, bounded partial lines, bounded tail captures,
+  and the latest 400 display lines with truncation metadata, so late summaries survive noisy suites.
+- Verification exposes `processOk`, `verified`, and `verificationStatus`. A zero exit with unrecognized
+  output is `unverified`, not green; recognized zero-test summaries remain valid, and Cargo/Go summaries
+  have direct parser fixtures.
 - Agent runs that combine `--yes` with `--demo` are refused, so an automated command cannot silently
   modify the checked-in demo. The tour, dump and screenshots operate on a temporary copy.
 
@@ -156,7 +238,8 @@ The safety rules are enforced in code, not just in documentation:
 - **Rust, Go and Ruby** recognize common declaration forms and derive depth from indentation and
   braces where applicable.
 - Every emitted scope has a real start line, end line, depth, parent and label. The scope screen
-  highlights the active line and the chain that contains it.
+  highlights the active line and the chain that contains it. Truncated source is explicitly marked
+  `PARTIAL` in the scope header and cards rather than presented as complete analysis.
 
 This is deliberately heuristic. It answers “which declaration encloses this line and where does it
 end?” for real files without a native dependency. It does not build a complete syntax tree, and it
@@ -180,7 +263,10 @@ fit, rather than overdrawing two strings into unreadable pixels. Short telemetry
 their rows to token and test summaries and skip the footer instead of painting it over the data.
 
 `matrix vision ... --png` writes the same canvas as a PNG. The default terminal representation is
-half-block truecolor; native Kitty graphics are not used by this build.
+half-block truecolor; native Kitty graphics are not used by this build. `MATRIX_REDUCED_MOTION=1`
+disables animation. `INK_SCREEN_READER=true` also disables animation and replaces every Vision mode
+with a textual data summary. The help overlay has a scrollable viewport and visible position so all
+keys and slash commands remain reachable at 40×20.
 
 ## Swarm semantics
 
@@ -199,22 +285,34 @@ invents a second concurrent model run to fill a lane.
 `MATRIX_HOME` defaults to `~/.matrix`:
 
 - `sessions/*.json` — session id, workspace, project summary, transcript cards, model, token stats,
-  metrics, and last-patch metadata.
+  metrics, and versioned `undoRun` recovery entries.
 - `backups/` — exact pre-edit file bytes.
 - `runs/` — per-run event logs written for later inspection.
 
 Writes use atomic JSON replacement. Session and backup files are created with private permissions
-where the platform supports it. Session ids are validated and sessions are filtered by workspace
-when resuming; a record from another workspace is not loaded. `/new` starts a fresh id and clears
-metrics, prompt history, saved patch, undo and auto-approve; `/clear` clears only the transcript and
-keeps the session and undo state. `/auto` toggles auto-approve for the next run. Pressing `a` at a
-gate enables it for the current run only, and the default is restored when that run finishes.
+where the platform supports it. Transcript and event retention is newest-first with count and UTF-8
+byte budgets. Small `<id>.meta.json` sidecars let session pickers list indexed records without parsing
+full transcripts; legacy records fall back to full parsing, while malformed records/sidecars produce
+visible warnings. Run-log/backup pruning
+is reference-aware and preserves every recovery source referenced by `undoRun` or legacy `lastPatch`.
+Save, list, and resume failures surface as structured nonfatal warnings. Session ids are validated
+and sessions are filtered by workspace when resuming; a record from another workspace is not loaded.
+`/new` starts a fresh id and clears metrics, prompt history, saved patch, undo and auto-approve;
+`/clear` clears only the transcript and keeps the session and undo state. `/auto` toggles auto-approve
+for the next run. Pressing `a` at a gate enables it for the current run only, and the default is
+restored when that run finishes.
 
 Credentials are read from `OPENROUTER_API_KEY` or `~/.matrix/credentials.json` (for example
 `{"openrouterApiKey":"..."}`; the legacy `apiKey` field is still accepted). Doctor and the UI report
-whether a key is available, never its value.
+whether a key is available, never its value. UI and execution share `lib/credentials.mjs`, so routing
+rules cannot drift. Interactive availability is cached across renders and revalidated by explicit
+model/picker actions; provider execution does not rely on the UI cache.
 
 ## CLI and headless behavior
+
+Command-specific flags and positional arguments are validated before work: incomplete values,
+non-integer geometry, invalid Vision modes, stray arguments, and incompatible flags fail with a short
+help hint rather than being ignored.
 
 The CLI has two modes:
 
@@ -245,13 +343,35 @@ The suite uses `node:test` and temporary directories. It covers:
 - CLI integration: version, help, doctor, sessions, smoke, dump, PNG export, apply, deny, failing
   Node verification, invalid flags, demo-write protection and missing credentials.
 
-Run it with:
+Run the direct suite or the complete engineering gate with:
 
 ```bash
 npm test
+npm run check
 ```
 
-No network is required for the default suite.
+The default suite is network-free. `npm run check` runs recursive syntax checks, ESLint, a
+contract-focused JSDoc/`checkJs` pass, Prettier, and the complete suite once with V8 coverage.
+`lib/contracts.mjs` defines the public project/result/event/controller types used by the checked
+implementation graph; it is not a TypeScript runtime rewrite. The coverage runner parses both Node
+22 TAP-prefixed and Node 24 information-prefixed reports, rejects missing/malformed/duplicate data,
+and enforces line/branch/function ratchets for 12 safety, protocol, and public-contract modules.
+Individual `syntax`, `lint`, `typecheck`, `format:check`, and `coverage` scripts are also available.
+The lint toolchain requires Node 22.13+; local gates run on current Node 22 and 24.
+
+## Internal packaging
+
+Matrix is a private/internal CLI at 1.0.0. `private` remains true, and `main: src/matrix.mjs` is a
+compatibility entry rather than a newly supported public module API. `package.json#files` allows only
+`bin/`, `lib/`, `src/`, `demo-project/`, README/MATRIX, LICENSE, and CHANGELOG. The stripped internal
+pack intentionally omits source-checkout benchmarks, engineering tests/scripts, development configs,
+planning docs, credentials, local state, and scratch artifacts.
+
+`npm run pack:check` invokes real `npm pack --dry-run --json` with lifecycle scripts disabled and a
+temporary destination. It compares the complete file set against the source tree, verifies private,
+`main`, `bin`, and executable mode, and fails on unexpected or missing files. It never creates a
+tarball or publishes. [RELEASE.md](RELEASE.md) is the maintainer release checklist; hosted Node 22/24
+CI and any deliberately scoped live-provider evidence remain separate from local package inspection.
 
 ## Known limits
 

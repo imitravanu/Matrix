@@ -1,3 +1,7 @@
 node_modules/
+coverage/
+.nyc_output/
+.matrix/
 *.log
+*.tgz
 scratch_*.png

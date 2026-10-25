@@ -8,11 +8,16 @@ import { runLocalAgent } from "../lib/local-agent.mjs";
 import { resolveModel } from "../lib/models.mjs";
 import { detectProject } from "../lib/project.mjs";
 import { parseScopes } from "../lib/scope.mjs";
+import { makeUnifiedDiff, parseUnifiedDiff } from "../lib/diff.mjs";
 import { applySwarmEvent, createSwarmState } from "../lib/swarm.mjs";
-import { SCREENS, checkFrame, renderAllScreens, renderScreen, visible } from "../src/render.mjs";
+import { createTestPolicy, withTestExecutionContext } from "../lib/test-policy.mjs";
+import { checkFrame, renderAllScreens, renderScreen, visible } from "../src/render.mjs";
 import { SlashMenu } from "../src/screens/common.mjs";
+import { HelpScreen } from "../src/screens/help.mjs";
+import { buildPermissionLines } from "../src/screens/permission.mjs";
+import { displayWidth } from "../lib/text.mjs";
 import { SLASH_COMMANDS, slashMatches } from "../lib/input.mjs";
-import { copyDemo, DEMO_ROOT, frameText } from "./helpers.mjs";
+import { ALL_VIEW_NAMES, copyDemo, frameText, patchEnv } from "./helpers.mjs";
 import { readFileSync } from "node:fs";
 
 let fixture = null;
@@ -24,12 +29,16 @@ before(async () => {
   process.env.MATRIX_HOME = join(demo.root, "home");
   const project = detectProject(demo.workspace);
   const events = [];
-  const result = await runLocalAgent({
-    task: "Fix the off-by-one in the bounds slice in src/processor.py",
-    project,
-    autoApprove: true,
-    onEvent: (event) => events.push(event),
-  });
+  const home = join(demo.root, "home");
+  const policy = createTestPolicy({ home, allowTests: true });
+  const result = await withTestExecutionContext({ home, policy }, () =>
+    runLocalAgent({
+      task: "Fix the off-by-one in the bounds slice in src/processor.py",
+      project,
+      autoApprove: true,
+      onEvent: (event) => events.push(event),
+    }),
+  );
   const proposal = events.find((event) => event.type === "proposal")?.proposal ?? result.proposal;
   const source = readFileSync(join(demo.workspace, "src", "processor.py"), "utf8");
   const parsed = parseScopes(source, "src/processor.py");
@@ -88,14 +97,61 @@ after(() => {
 });
 
 test("all eight screens render cleanly at four terminal geometries", () => {
-  for (const [columns, rows] of [[60, 22], [80, 26], [100, 30], [140, 40]]) {
-    for (const screen of SCREENS) {
+  const markers = {
+    empty: /workspace|S P A T I A L|MATRIX\/FORGE/,
+    chat: /crucible/i,
+    permission: /PATCH GATE/,
+    swarm: /PLANNER|FORGE|RADAR/,
+    scope: /scope lens|SCOPES/i,
+    vision: /VISION/,
+    model: /MODEL ROUTER/,
+    help: /KEYMAP/,
+  };
+  for (const [columns, rows] of [
+    [60, 22],
+    [80, 26],
+    [100, 30],
+    [140, 40],
+  ]) {
+    for (const screen of ALL_VIEW_NAMES) {
       const ansi = renderScreen(screen, fixture, { columns, rows });
       const report = checkFrame(ansi, { columns, rows });
-      assert.equal(report.ok, true, `${screen} at ${columns}×${rows}: ${report.problems.join(", ")}`);
-      assert.ok(visible(ansi).some((line) => line.trim().length > 0), `${screen} is empty`);
+      assert.equal(
+        report.ok,
+        true,
+        `${screen} at ${columns}×${rows}: ${report.problems.join(", ")}`,
+      );
+      const text = visible(ansi).join("\n");
+      assert.ok(text.trim().length > 0, `${screen} is empty`);
+      assert.match(
+        text,
+        markers[screen],
+        `${screen} lost meaningful content at ${columns}×${rows}`,
+      );
     }
   }
+});
+
+test("the narrow scope lens keeps its header and every selected scope visible", () => {
+  const labels = ["class DataProcessor", "__init__", "process_bounds", "flush_window"];
+  for (const [scopeSelection, label] of labels.entries()) {
+    const lines = visible(
+      renderScreen("scope", { ...fixture, scopeSelection }, { columns: 60, rows: 22 }),
+    );
+    const divider = lines.findIndex((line, index) => index > 3 && /─{10}/.test(line));
+    const tree = lines.slice(3, divider).join("\n");
+    assert.match(tree, /SCOPES\s+4/);
+    assert.ok(tree.includes(label), `${label} should be visible in the scope tree`);
+    assert.doesNotMatch(tree, /L\d+-\d+scope/);
+  }
+});
+
+test("the scope lens labels truncated source explicitly", () => {
+  const parsed = parseScopes("class DataProcessor:\n    pass\n", "src/processor.py", {
+    truncated: true,
+  });
+  const text = visible(renderScreen("scope", { ...fixture, scopeParsed: parsed })).join("\n");
+  assert.match(text, /PARTIAL/);
 });
 
 test("each screen exposes its real content and labels", () => {
@@ -115,6 +171,53 @@ test("each screen exposes its real content and labels", () => {
   }
 });
 
+test("the patch gate wraps complete long lines instead of clipping them", () => {
+  const source = `context = "${"x".repeat(160)}"; END_OF_CHANGE`;
+  const proposal = {
+    file: "a.py",
+    status: "pending",
+    stats: { adds: 1, dels: 0 },
+    hunks: [
+      {
+        oldStart: 0,
+        oldLines: 0,
+        newStart: 1,
+        newLines: 1,
+        rows: [{ type: "add", text: source, oldLine: null, newLine: 1 }],
+      },
+    ],
+  };
+  const lines = buildPermissionLines({ proposal, width: 44, expanded: true });
+  const changed = lines.filter((line) => line.bg);
+  assert.ok(changed.length > 1);
+  assert.equal(changed.map((line) => line.text.slice(14)).join(""), source);
+  for (const line of lines) assert.ok(displayWidth(line.text) <= 44);
+});
+
+test("the patch gate surfaces EOL and final-newline changes", () => {
+  const cases = [
+    ["a\n", "a\r\n", /EOL {2}CRLF/],
+    ["a", "a\n", /EOF {2}final newline: yes/],
+  ];
+  for (const [original, updated, pattern] of cases) {
+    const hunks = parseUnifiedDiff(makeUnifiedDiff(original, updated)).hunks;
+    const proposal = { file: "x.txt", status: "pending", stats: { adds: 1, dels: 1 }, hunks };
+    const text = buildPermissionLines({ proposal, width: 60, expanded: true })
+      .map((line) => line.text)
+      .join("\n");
+    assert.match(text, pattern);
+  }
+});
+
+test("a resolved patch gate does not advertise approval actions", () => {
+  const permission = { ...fixture.permission, status: "approved" };
+  const text = visible(
+    renderScreen("permission", { ...fixture, permission }, { columns: 100, rows: 30 }),
+  ).join("\n");
+  assert.match(text, /approved · f fold/);
+  assert.doesNotMatch(text, /y apply|a apply all|n deny/);
+});
+
 test("the slash menu scrolls its window instead of clamping the highlight", () => {
   const commands = slashMatches("/");
   assert.equal(commands.length, SLASH_COMMANDS.length);
@@ -125,11 +228,14 @@ test("the slash menu scrolls its window instead of clamping the highlight", () =
         selected,
         width: 80,
         maxRows: 5,
-      })
+      }),
     );
     try {
       const text = frameText(app);
-      assert.ok(text.includes(commands[selected].name), `selected command ${commands[selected].name} is not visible`);
+      assert.ok(
+        text.includes(commands[selected].name),
+        `selected command ${commands[selected].name} is not visible`,
+      );
     } finally {
       app.unmount();
     }
@@ -141,7 +247,7 @@ test("the slash menu scrolls its window instead of clamping the highlight", () =
       selected: commands.length - 1,
       width: 80,
       maxRows: 5,
-    })
+    }),
   );
   try {
     const text = frameText(last);
@@ -162,7 +268,7 @@ test("the triple-lane swarm shows every lane at 140 columns", () => {
 });
 
 test("a 40-column terminal still produces a complete, non-overflowing frame", () => {
-  for (const screen of SCREENS) {
+  for (const screen of ALL_VIEW_NAMES) {
     const ansi = renderScreen(screen, fixture, { columns: 40, rows: 20 });
     const report = checkFrame(ansi, { columns: 40, rows: 20 });
     assert.equal(report.ok, true, `${screen} at 40×20: ${report.problems.join(", ")}`);
@@ -171,9 +277,151 @@ test("a 40-column terminal still produces a complete, non-overflowing frame", ()
   }
 });
 
+test("expanded retained output scrolls at every terminal geometry without changing frame widths", () => {
+  const output = Array.from({ length: 400 }, (_, index) => `retained line ${index + 50}`);
+  output[200] = `LONG_${"z".repeat(180)}_END_OF_OUTPUT`;
+  output[399] = "EXPECTED_FAILURE_TAIL";
+  const chatHistory = [
+    {
+      role: "assistant",
+      modelName: "matrix/test",
+      content: "Tests failed. The output is above.",
+      error: true,
+      verifyTests: {
+        cmd: "npm test",
+        results: [{ name: "diagnosable failure", pass: false }],
+        passed: 0,
+        failed: 1,
+        ok: false,
+        summary: "1 failed",
+        output,
+        outputLineCount: 450,
+        outputTruncated: true,
+      },
+    },
+  ];
+
+  for (const [columns, rows] of [
+    [40, 20],
+    [60, 22],
+    [80, 26],
+    [100, 30],
+    [140, 40],
+  ]) {
+    for (const chatScroll of [0, 100000]) {
+      const ansi = renderScreen(
+        "chat",
+        { ...fixture, chatHistory, outputExpanded: true, chatScroll },
+        { columns, rows },
+      );
+      const report = checkFrame(ansi, { columns, rows });
+      assert.equal(
+        report.ok,
+        true,
+        `retained output at ${columns}×${rows}: ${report.problems.join(", ")}`,
+      );
+    }
+  }
+
+  const top = visible(
+    renderScreen(
+      "chat",
+      {
+        ...fixture,
+        chatHistory,
+        outputExpanded: true,
+        chatScroll: 100000,
+      },
+      { columns: 40, rows: 20 },
+    ),
+  ).join("\n");
+  assert.match(top, /retained output/);
+  assert.match(top, /last 400 of 450 lines/);
+  assert.match(top, /retained line 50/);
+  const bottom = visible(
+    renderScreen(
+      "chat",
+      {
+        ...fixture,
+        chatHistory,
+        outputExpanded: true,
+        chatScroll: 0,
+      },
+      { columns: 40, rows: 20 },
+    ),
+  ).join("\n");
+  assert.match(bottom, /EXPECTED_FAILURE_TAIL/);
+});
+
+test("the help viewport reaches every key and slash command at 40 columns", () => {
+  const frames = [0, 10, 100].map((scrollOffset) => {
+    const app = render(React.createElement(HelpScreen, { width: 38, height: 15, scrollOffset }));
+    try {
+      return frameText(app);
+    } finally {
+      app.unmount();
+    }
+  });
+  assert.match(frames[0], /Alt\+1\/2/);
+  assert.match(frames[1], /SLASH COMMANDS/);
+  assert.match(frames.at(-1), /\/quit/);
+  assert.match(frames.at(-1), /\d+-\d+\/\d+/);
+});
+
+test("every Vision mode has a complete textual summary in screen-reader mode", () => {
+  const restore = patchEnv({ INK_SCREEN_READER: "true" });
+  try {
+    const cases = {
+      scope: [/src\/processor\.py/, /active: line 20/, /process_bounds/],
+      workspace: [/demo-project/, /python/, /pytest/],
+      telemetry: [/Local Forge/, /usage unavailable|input/, /4 passed · 0 failed/],
+    };
+    for (const [visionMode, patterns] of Object.entries(cases)) {
+      const text = visible(
+        renderScreen("vision", { ...fixture, visionMode }, { columns: 60, rows: 22 }),
+      ).join("\n");
+      for (const pattern of patterns)
+        assert.match(text, pattern, `${visionMode} missing ${pattern}`);
+      assert.equal(text.includes("▄"), false, `${visionMode} rendered pixels instead of text`);
+    }
+  } finally {
+    restore();
+  }
+});
+
+test("screen-reader mode retains approval, error, and verification content", () => {
+  const restore = patchEnv({ INK_SCREEN_READER: "true" });
+  try {
+    const permission = visible(renderScreen("permission", fixture, { columns: 60, rows: 22 })).join(
+      "\n",
+    );
+    assert.match(permission, /PATCH GATE/);
+    assert.match(permission, /src\/processor\.py/);
+    assert.match(permission, /y apply/);
+    assert.match(permission, /context = bounds/);
+
+    const chat = visible(renderScreen("chat", fixture, { columns: 100, rows: 30 })).join("\n");
+    assert.match(chat, /Verification passed: 4 passed · 0 failed/);
+
+    const failure = visible(
+      renderScreen(
+        "chat",
+        {
+          ...fixture,
+          chatHistory: [{ role: "assistant", error: true, summary: "stream failed", content: "" }],
+        },
+        { columns: 60, rows: 22 },
+      ),
+    ).join("\n");
+    assert.match(failure, /stream failed/);
+  } finally {
+    restore();
+  }
+});
+
 test("renderAllScreens and the backwards-compatible Frame path agree", () => {
   const all = renderAllScreens(fixture, { columns: 100, rows: 30 });
-  assert.deepEqual(Object.keys(all).sort(), [...SCREENS].sort());
+  assert.deepEqual(Object.keys(all).sort(), [...ALL_VIEW_NAMES].sort());
   const direct = renderScreen("scope", fixture, { columns: 100, rows: 30 });
   assert.equal(all.scope, direct);
   assert.ok(visible(direct).join("\n").includes("SCOPES"));
@@ -181,15 +429,26 @@ test("renderAllScreens and the backwards-compatible Frame path agree", () => {
 });
 
 test("all three vision modes render real data at every comfortable size", () => {
-  const markers = { scope: /Scope flame/, workspace: /Workspace inventory/, telemetry: /Run telemetry/ };
+  const markers = {
+    scope: /Scope flame/,
+    workspace: /Workspace inventory/,
+    telemetry: /Run telemetry/,
+  };
   for (const mode of ["scope", "workspace", "telemetry"]) {
-    for (const [columns, rows] of [[60, 22], [100, 30], [140, 40]]) {
+    for (const [columns, rows] of [
+      [60, 22],
+      [100, 30],
+      [140, 40],
+    ]) {
       const ansi = renderScreen("vision", { ...fixture, visionMode: mode }, { columns, rows });
       const report = checkFrame(ansi, { columns, rows });
       assert.equal(report.ok, true, `${mode} at ${columns}×${rows}: ${report.problems.join(", ")}`);
       const lines = visible(ansi);
       assert.match(lines[3], markers[mode], `${mode} lost its graph title at ${columns} columns`);
-      assert.ok(lines.slice(4).join("\n").trim().length > 0, `${mode} rendered an empty canvas at ${columns} columns`);
+      assert.ok(
+        lines.slice(4).join("\n").trim().length > 0,
+        `${mode} rendered an empty canvas at ${columns} columns`,
+      );
     }
   }
 });

@@ -91,9 +91,18 @@ test("submit ignores whitespace and de-duplicates history", () => {
 
 test("slashMatches filters by prefix and stops after an argument", () => {
   assert.ok(slashMatches("/").length === SLASH_COMMANDS.length);
-  assert.deepEqual(slashMatches("/he").map((item) => item.name), ["/help"]);
-  assert.deepEqual(slashMatches("/m").map((item) => item.name), ["/model"]);
-  assert.deepEqual(slashMatches("/help ").map((item) => item.name), ["/help"]);
+  assert.deepEqual(
+    slashMatches("/he").map((item) => item.name),
+    ["/help"],
+  );
+  assert.deepEqual(
+    slashMatches("/m").map((item) => item.name),
+    ["/model"],
+  );
+  assert.deepEqual(
+    slashMatches("/help ").map((item) => item.name),
+    ["/help"],
+  );
   assert.deepEqual(slashMatches("/help now"), []);
   assert.deepEqual(slashMatches("hello"), []);
 });
@@ -111,7 +120,12 @@ test("inputSegments exposes the cursor cell and empty state", () => {
   const state = createInputState("abc");
   state.cursor = 1;
   assert.deepEqual(inputSegments(state), { before: "a", at: "b", after: "c", empty: false });
-  assert.deepEqual(inputSegments(createInputState("")), { before: "", at: "", after: "", empty: true });
+  assert.deepEqual(inputSegments(createInputState("")), {
+    before: "",
+    at: "",
+    after: "",
+    empty: true,
+  });
 });
 
 test("setValue normalizes and moves the cursor to the end", () => {

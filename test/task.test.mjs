@@ -15,7 +15,12 @@ import {
 import { copyDemo } from "./helpers.mjs";
 
 test("classifyTask separates rename, test, fix and explain intents", () => {
-  assert.deepEqual(classifyTask("rename foo to bar"), { intent: "rename", from: "foo", to: "bar", text: "rename foo to bar" });
+  assert.deepEqual(classifyTask("rename foo to bar"), {
+    intent: "rename",
+    from: "foo",
+    to: "bar",
+    text: "rename foo to bar",
+  });
   assert.equal(classifyTask("run the tests").intent, "test");
   assert.equal(classifyTask("/test").intent, "test");
   assert.equal(classifyTask("fix the off-by-one in processor.py").intent, "fix");
@@ -24,7 +29,11 @@ test("classifyTask separates rename, test, fix and explain intents", () => {
 });
 
 test("extractKeywords drops stopwords and de-duplicates", () => {
-  assert.deepEqual(extractKeywords("Fix the bounds bug in src/processor.py"), ["bounds", "src", "processor.py"]);
+  assert.deepEqual(extractKeywords("Fix the bounds bug in src/processor.py"), [
+    "bounds",
+    "src",
+    "processor.py",
+  ]);
   assert.deepEqual(extractKeywords("the and fix"), []);
   assert.deepEqual(extractKeywords("a b c d", { limit: 2 }), []);
 });
@@ -66,7 +75,8 @@ test("findSliceOffByOne ignores string and comment examples", () => {
 });
 
 test("findSliceOffByOne preserves strings beside a real slice", () => {
-  const line = 'const label = "items.slice(0, items.length - 1)"; const tail = items.slice(0, items.length - 1);';
+  const line =
+    'const label = "items.slice(0, items.length - 1)"; const tail = items.slice(0, items.length - 1);';
   const hits = findSliceOffByOne(line, { language: "javascript" });
   assert.equal(hits.length, 1);
   assert.match(hits[0].after, /"items\.slice\(0, items\.length - 1\)"/);
@@ -103,7 +113,14 @@ test("findSliceOffByOne handles Python stop bounds and JS method variants", () =
 
 test("findIdentifier returns every whole-word occurrence", () => {
   const hits = findIdentifier("foo foobar foo\nbar foo\n", "foo");
-  assert.deepEqual(hits.map((hit) => [hit.line, hit.column]), [[1, 1], [1, 12], [2, 5]]);
+  assert.deepEqual(
+    hits.map((hit) => [hit.line, hit.column]),
+    [
+      [1, 1],
+      [1, 12],
+      [2, 5],
+    ],
+  );
   assert.deepEqual(findIdentifier("nothing", "foo"), []);
 });
 
@@ -123,7 +140,12 @@ test("buildGroundedAnswer cites only searched lines and never claims an edit", (
   const matches = [
     { rel: "src/processor.py", line: 20, text: "        context = bounds[0:len(bounds) - 1]" },
   ];
-  const answer = buildGroundedAnswer({ task: "explain the bounds slice", project, matches, file: project.files[0] });
+  const answer = buildGroundedAnswer({
+    task: "explain the bounds slice",
+    project,
+    matches,
+    file: project.files[0],
+  });
   assert.match(answer, /Workspace: demo-project/);
   assert.match(answer, /Detected runner: python3 -m pytest -q/);
   assert.match(answer, /src\/processor\.py:20/);
@@ -140,5 +162,9 @@ test("the demo processor parses and its bug is precisely located", (t) => {
   assert.equal(hits.length, 1);
   assert.equal(hits[0].line, 20);
   const parsed = parseScopes(source, "src/processor.py");
-  assert.ok(parsed.flat.some((node) => node.name === "process_bounds" && node.startLine <= 20 && node.endLine >= 20));
+  assert.ok(
+    parsed.flat.some(
+      (node) => node.name === "process_bounds" && node.startLine <= 20 && node.endLine >= 20,
+    ),
+  );
 });

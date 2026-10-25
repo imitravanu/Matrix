@@ -6,8 +6,7 @@ import React, { useEffect, useMemo } from "react";
 import { Box, Text } from "ink";
 
 import { forge, forgeBg } from "../../lib/forge.mjs";
-import { displayWidth, padToWidth, truncateToWidth } from "../../lib/text.mjs";
-import { foldDiffLines } from "../cards.mjs";
+import { displayWidth, truncateToWidth, wrapCodeToWidth } from "../../lib/text.mjs";
 
 const h = React.createElement;
 
@@ -22,7 +21,10 @@ export function buildPermissionLines({ proposal = null, width = 76, expanded = f
       { text: truncateToWidth("PATCH GATE", w), color: forge.accent, bold: true },
       { text: "", color: forge.muted },
       { text: truncateToWidth("No patch is waiting for approval.", w), color: forge.muted },
-      { text: truncateToWidth("Run a task and the first real write will stop here.", w), color: forge.dim },
+      {
+        text: truncateToWidth("Run a task and the first real write will stop here.", w),
+        color: forge.muted,
+      },
     ];
   }
 
@@ -30,14 +32,28 @@ export function buildPermissionLines({ proposal = null, width = 76, expanded = f
   const status = proposal.status ?? "pending";
   const lines = [
     { text: truncateToWidth(`PATCH GATE · ${proposal.file}`, w), color: forge.accent, bold: true },
-    { text: truncateToWidth(proposal.scope ? `scope  ${proposal.scope}` : "scope  (module)", w), color: forge.muted },
-    { text: truncateToWidth(`reason ${proposal.reason ?? proposal.edits?.[0]?.reason ?? "unspecified"}`, w), color: forge.muted },
+    {
+      text: truncateToWidth(proposal.scope ? `scope  ${proposal.scope}` : "scope  (module)", w),
+      color: forge.muted,
+    },
+    {
+      text: truncateToWidth(
+        `reason ${proposal.reason ?? proposal.edits?.[0]?.reason ?? "unspecified"}`,
+        w,
+      ),
+      color: forge.muted,
+    },
     {
       text: truncateToWidth(
         `+${stats.adds} −${stats.dels} · ${status} · backup before write · tests after write`,
-        w
+        w,
       ),
-      color: status === "denied" ? forge.err : status === "approved" || status === "applied" ? forge.ok : forge.warn,
+      color:
+        status === "denied"
+          ? forge.err
+          : status === "approved" || status === "applied"
+            ? forge.ok
+            : forge.warn,
       bold: true,
     },
     { text: "", color: forge.muted },
@@ -47,17 +63,35 @@ export function buildPermissionLines({ proposal = null, width = 76, expanded = f
   if (hunks.length === 0) {
     for (const line of String(proposal.patch ?? "").split("\n")) {
       if (!line) continue;
-      lines.push({ text: truncateToWidth(line, w), color: line.startsWith("+") ? forge.ok : line.startsWith("-") ? forge.err : forge.muted });
+      const color = line.startsWith("+")
+        ? forge.ok
+        : line.startsWith("-")
+          ? forge.err
+          : forge.muted;
+      for (const part of wrapCodeToWidth(line, w)) lines.push({ text: part, color });
     }
     return lines;
   }
 
   for (const hunk of hunks) {
     lines.push({
-      text: truncateToWidth(`@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`, w),
+      text: truncateToWidth(
+        `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`,
+        w,
+      ),
       color: forge.info,
       bold: true,
     });
+    if (hunk.eol) {
+      const label = hunk.eol === "\r\n" ? "CRLF" : hunk.eol === "\r" ? "CR" : "LF";
+      lines.push({ text: truncateToWidth(`EOL  ${label}`, w), color: forge.info });
+    }
+    if (typeof hunk.newFinalNewline === "boolean") {
+      lines.push({
+        text: truncateToWidth(`EOF  final newline: ${hunk.newFinalNewline ? "yes" : "no"}`, w),
+        color: forge.info,
+      });
+    }
 
     let rows = hunk.rows.map((row) => ({
       type: row.type,
@@ -97,8 +131,11 @@ export function buildPermissionLines({ proposal = null, width = 76, expanded = f
     for (const row of rows) {
       if (row.type === "fold") {
         lines.push({
-          text: truncateToWidth(`${" ".repeat(5)} ${" ".repeat(5)}   … ${row.skipped} unchanged lines`, w),
-          color: forge.dim,
+          text: truncateToWidth(
+            `${" ".repeat(5)} ${" ".repeat(5)}   … ${row.skipped} unchanged lines`,
+            w,
+          ),
+          color: forge.muted,
         });
         continue;
       }
@@ -107,21 +144,29 @@ export function buildPermissionLines({ proposal = null, width = 76, expanded = f
         row.type === "add"
           ? `${" ".repeat(5)} ${lineNo(row.newLine)} `
           : row.type === "del"
-          ? `${lineNo(row.oldLine)} ${" ".repeat(5)} `
-          : `${lineNo(row.oldLine)} ${lineNo(row.newLine)} `;
-      const text = `${gutter}${marker} ${row.text}`;
-      lines.push({
-        text: truncateToWidth(text, w),
-        color: row.type === "add" ? forge.text : row.type === "del" ? forge.text : forge.muted,
-        bg: row.type === "add" ? forgeBg.add : row.type === "del" ? forgeBg.del : undefined,
+            ? `${lineNo(row.oldLine)} ${" ".repeat(5)} `
+            : `${lineNo(row.oldLine)} ${lineNo(row.newLine)} `;
+      const prefix = `${gutter}${marker} `;
+      const continuation = " ".repeat(displayWidth(prefix));
+      const parts = wrapCodeToWidth(row.text, w - displayWidth(prefix));
+      parts.forEach((part, index) => {
+        lines.push({
+          text: `${index === 0 ? prefix : continuation}${part}`,
+          color: row.type === "add" ? forge.text : row.type === "del" ? forge.text : forge.muted,
+          bg: row.type === "add" ? forgeBg.add : row.type === "del" ? forgeBg.del : undefined,
+        });
       });
     }
     lines.push({ text: "", color: forge.muted });
   }
 
+  const footer =
+    status === "pending"
+      ? "y apply · a apply all · n deny · f fold · PgUp/PgDn scroll"
+      : `${status} · f fold · PgUp/PgDn scroll`;
   lines.push({
-    text: truncateToWidth("y apply · a apply all · n deny · f fold · PgUp/PgDn scroll", w),
-    color: forge.dim,
+    text: truncateToWidth(footer, w),
+    color: forge.muted,
   });
   return lines;
 }
@@ -133,13 +178,13 @@ export function PermissionScreen({
   expanded = false,
   scrollOffset = 0,
   onBounds = null,
-  frame = 0,
+  frame: _frame = 0,
 }) {
   const innerWidth = Math.max(20, width - 4);
   const innerHeight = Math.max(3, height - 2);
   const lines = useMemo(
     () => buildPermissionLines({ proposal, width: innerWidth, expanded }),
-    [proposal, innerWidth, expanded]
+    [proposal, innerWidth, expanded],
   );
   const total = lines.length;
   const maxOffset = Math.max(0, total - innerHeight);
@@ -163,8 +208,8 @@ export function PermissionScreen({
           bold: line?.bold ?? false,
           wrap: "truncate",
         },
-        line?.text ?? ""
-      )
+        line?.text ?? "",
+      ),
     );
   }
 
@@ -181,7 +226,7 @@ export function PermissionScreen({
         flexGrow: 1,
         overflow: "hidden",
       },
-      ...rows
-    )
+      ...rows,
+    ),
   );
 }

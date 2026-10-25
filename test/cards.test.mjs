@@ -82,7 +82,7 @@ test("thought cards collapse long reasoning unless expanded or streaming", () =>
   const foldedText = plain(folded);
   assert.match(foldedText, /line 8/);
   assert.ok(!foldedText.includes("line 9"));
-  assert.match(foldedText, /12 more lines \(t to expand\)/);
+  assert.match(foldedText, /12 more lines · \/thoughts to expand/);
   const expanded = renderThoughtCard(reasoning, 2, false, 60, true);
   assert.match(plain(expanded), /line 20/);
   const streaming = renderThoughtCard("one\ntwo", 1, true, 60);
@@ -91,20 +91,48 @@ test("thought cards collapse long reasoning unless expanded or streaming", () =>
   assertWidth(folded, 60);
 });
 
+test("a collapsed 1 MiB thought renders only a bounded preview", () => {
+  const unit = "collapsed reasoning with spaces λ🙂 · ";
+  const reasoning = `PREVIEW_START ${unit.repeat(Math.ceil((1024 * 1024) / unit.length))} PREVIEW_END`;
+  assert.ok(reasoning.length >= 1024 * 1024);
+  const folded = renderThoughtCard(reasoning, 2, false, 60);
+  const text = plain(folded);
+  assert.equal(folded.length, 11, "top + eight preview rows + fold hint + bottom");
+  assert.match(text, /PREVIEW_START/);
+  assert.match(text, /additional reasoning · \/thoughts to expand/);
+  assert.ok(!text.includes("PREVIEW_END"));
+  assertWidth(folded, 60);
+});
+
 test("read, edit and verification cards preserve real line numbers and status", () => {
-  const read = renderReadFileCard("src/processor.py", "class DataProcessor › def process_bounds", ["  20      context = ..."], "0.1s", 70);
+  const read = renderReadFileCard(
+    "src/processor.py",
+    "class DataProcessor › def process_bounds",
+    ["  20      context = ..."],
+    "0.1s",
+    70,
+  );
   assert.match(plain(read), /READ FILE · src\/processor\.py · 0\.1s/);
   assert.match(plain(read), /process_bounds/);
   assertWidth(read, 70);
-  const objectRead = renderReadFileCard({
-    path: "src/a.py",
-    scope: "function f",
-    snippet: ["  1  x"],
-    duration: "2ms",
-  }, 60);
+  const objectRead = renderReadFileCard(
+    {
+      path: "src/a.py",
+      scope: "function f",
+      snippet: ["  1  x"],
+      duration: "2ms",
+    },
+    60,
+  );
   assert.match(plain(objectRead), /src\/a\.py/);
 
-  const edit = renderEditFileCard("src/processor.py", "class DataProcessor › def process_bounds", PATCH.split("\n"), "approved", 70);
+  const edit = renderEditFileCard(
+    "src/processor.py",
+    "class DataProcessor › def process_bounds",
+    PATCH.split("\n"),
+    "approved",
+    70,
+  );
   const editText = plain(edit);
   assert.match(editText, /EDIT · src\/processor\.py/);
   assert.match(editText, /\+1 −1 · approved/);
@@ -114,13 +142,20 @@ test("read, edit and verification cards preserve real line numbers and status", 
   assertWidth(edit, 70);
   const denied = renderEditFileCard("a.py", "", ["-a", "+b"], "denied", 40);
   assert.match(plain(denied), /denied/);
-  const expanded = renderEditFileCard("a.py", "", PATCH.split("\n"), "pending", 70, { expanded: true });
+  const expanded = renderEditFileCard("a.py", "", PATCH.split("\n"), "pending", 70, {
+    expanded: true,
+  });
   assert.equal(plain(expanded).includes("unchanged line"), false);
 
-  const verify = renderVerifyTestsCard("python3 -m pytest -q", [
-    { name: "tests/test_x.py::test_a", pass: true },
-    { name: "tests/test_x.py::test_b [1]", pass: false },
-  ], "0.8s", 76);
+  const verify = renderVerifyTestsCard(
+    "python3 -m pytest -q",
+    [
+      { name: "tests/test_x.py::test_a", pass: true },
+      { name: "tests/test_x.py::test_b [1]", pass: false },
+    ],
+    "0.8s",
+    76,
+  );
   const verifyText = plain(verify);
   assert.match(verifyText, /\$ python3 -m pytest -q/);
   assert.match(verifyText, /✓ tests\/test_x\.py::test_a/);
@@ -132,15 +167,91 @@ test("read, edit and verification cards preserve real line numbers and status", 
     [{ name: "failing test", pass: false }],
     "20ms",
     76,
-    { passed: 2, failed: 2, summary: "2 failed, 2 passed" }
+    { passed: 2, failed: 2, summary: "2 failed, 2 passed" },
   );
   assert.match(plain(authoritative), /2 passed · 2 failed · 20ms/);
-  assert.match(plain(renderVerifyTestsCard({ cmd: "npm test", skipped: true, results: [] }, 60)), /no test runner detected/);
+  assert.match(
+    plain(renderVerifyTestsCard({ cmd: "npm test", skipped: true, results: [] }, 60)),
+    /no test runner detected/,
+  );
+});
+
+test("verification cards expose failure tails and every retained line when expanded", () => {
+  const longLine = `LONG_${"z".repeat(180)}_END_OF_OUTPUT`;
+  const output = Array.from({ length: 400 }, (_, index) => `retained line ${index + 50}`);
+  output[200] = longLine;
+  output[399] = "E EXPECTED_FAILURE_TAIL · retained line 449";
+  const options = {
+    results: [{ name: "diagnosable failure", pass: false }],
+    passed: 0,
+    failed: 1,
+    ok: false,
+    output,
+    outputLineCount: 450,
+    outputTruncated: true,
+  };
+
+  const collapsed = renderVerifyTestsCard({ cmd: "npm test", duration: "20ms", ...options }, 60);
+  const collapsedText = plain(collapsed);
+  assert.match(collapsedText, /retained output · last 400 of 450 lines/);
+  assert.match(collapsedText, /showing last 8 retained · Alt\+O expand/);
+  assert.match(collapsedText, /EXPECTED_FAILURE_TAIL/);
+  assert.ok(!collapsedText.includes("retained line 50"));
+  assert.ok(!collapsedText.includes("END_OF_OUTPUT"));
+
+  const expanded = renderVerifyTestsCard(
+    { cmd: "npm test", duration: "20ms", ...options, expanded: true },
+    60,
+  );
+  const expandedText = plain(expanded);
+  assert.match(expandedText, /retained output · last 400 of 450 lines/);
+  assert.match(expandedText, /Alt\+O collapse · PgUp\/PgDn scroll/);
+  assert.match(expandedText, /retained line 50/);
+  assert.match(expandedText, /retained line 449/);
+  assert.match(expandedText, /EXPECTED_FAILURE_TAIL/);
+  assert.ok(expandedText.includes("END_OF_OUTPUT"));
+  assert.equal((expandedText.match(/z/g) ?? []).length, 180);
+  for (const line of [...collapsed, ...expanded]) assert.equal(displayWidth(line.text), 60);
+});
+
+test("verification output wraps long lines at narrow widths without losing content", () => {
+  const output = [`prefix ${"q".repeat(160)} suffix`, "final failure"];
+  for (const width of [20, 40, 60]) {
+    const lines = renderVerifyTestsCard("npm test", [], "", width, {
+      ok: false,
+      failed: 1,
+      summary: "1 failed",
+      output,
+      outputLineCount: 2,
+      outputTruncated: false,
+      expanded: true,
+    });
+    const text = plain(lines);
+    assert.ok(text.includes("prefix"));
+    assert.ok(text.includes("suffix"));
+    assert.ok(text.includes("final failure"));
+    assert.equal((text.match(/q/g) ?? []).length, 160);
+    assert.match(text, /retained output/);
+    assert.match(text, /2 lines retained/);
+    for (const line of lines) assert.equal(displayWidth(line.text), width);
+  }
+});
+
+test("edit cards wrap long changed lines without dropping their tail", () => {
+  const long = `+const payload = "${"x".repeat(160)}"; END_OF_CHANGE`;
+  const lines = renderEditFileCard("a.py", "", [long], "pending", 48, { expanded: true });
+  const text = plain(lines);
+  assert.ok(text.includes("END_OF_CHANGE"));
+  assert.equal((text.match(/x/g) ?? []).length, 160);
+  assertWidth(lines, 48);
 });
 
 test("content parsing handles fenced code, tildes and an unterminated stream", () => {
   const blocks = parseContentBlocks("Before\n```py\nprint(1)\n```\nAfter");
-  assert.deepEqual(blocks.map((block) => block.type), ["text", "code", "text"]);
+  assert.deepEqual(
+    blocks.map((block) => block.type),
+    ["text", "code", "text"],
+  );
   assert.equal(blocks[1].lang, "py");
   assert.deepEqual(blocks[1].lines, ["print(1)"]);
   const tilde = parseContentBlocks("~~~js\nconst x = 1;\n~~~");
@@ -148,7 +259,10 @@ test("content parsing handles fenced code, tildes and an unterminated stream", (
   assert.equal(tilde[0].lang, "js");
   const open = parseContentBlocks("```\nstill streaming");
   assert.equal(open[0].open, true);
-  const rendered = renderContentWithCodeBlocks("# Heading\n\n- bullet\n\n```js\nconst x = 1;\n```\n\nDone", 40);
+  const rendered = renderContentWithCodeBlocks(
+    "# Heading\n\n- bullet\n\n```js\nconst x = 1;\n```\n\nDone",
+    40,
+  );
   assertWidth(rendered, 40);
   assert.match(plain(rendered), /Heading/);
   assert.match(plain(rendered), /┌─ js/);

@@ -4,6 +4,16 @@
   "private": true,
   "type": "module",
   "description": "Matrix — a spatial agent terminal workbench with offline Local Forge, real patch gates and a truecolor scope canvas.",
+  "files": [
+    "bin/",
+    "lib/",
+    "src/",
+    "demo-project/",
+    "README.md",
+    "MATRIX.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
   "main": "src/matrix.mjs",
   "bin": {
     "matrix": "./bin/matrix.mjs"
@@ -18,7 +28,14 @@
     "test": "node --test \"test/*.test.mjs\"",
     "bench": "node bin/matrix.mjs bench",
     "doctor": "node bin/matrix.mjs doctor",
-    "check": "npm run test"
+    "syntax": "node scripts/check-syntax.mjs",
+    "lint": "eslint .",
+    "typecheck": "tsc --project jsconfig.json --pretty false",
+    "format:check": "prettier --check .",
+    "format": "prettier --write .",
+    "coverage": "node scripts/check-coverage.mjs",
+    "pack:check": "node scripts/check-pack.mjs",
+    "check": "npm run syntax && npm run lint && npm run typecheck && npm run format:check && npm run coverage"
   },
   "keywords": [
     "matrix",
@@ -40,6 +57,13 @@
     "react": "^19.3.0"
   },
   "devDependencies": {
-    "ink-testing-library": "^4.0.0"
+    "@eslint/js": "10.0.1",
+    "@types/node": "22.20.5",
+    "@types/punycode": "2.1.4",
+    "eslint": "10.13.0",
+    "globals": "17.13.0",
+    "ink-testing-library": "^4.0.0",
+    "prettier": "3.9.10",
+    "typescript": "5.9.3"
   }
 }

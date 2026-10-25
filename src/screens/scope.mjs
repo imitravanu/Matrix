@@ -21,8 +21,10 @@ function kindColor(kind) {
 
 function codeLineColor(line) {
   const trimmed = line.trimStart();
-  if (trimmed.startsWith("#") || trimmed.startsWith("//") || trimmed.startsWith("*")) return forge.dim;
-  if (/^(def|class|async def|function|export|import|from|const|let|var)\b/.test(trimmed)) return forge.accent;
+  if (trimmed.startsWith("#") || trimmed.startsWith("//") || trimmed.startsWith("*"))
+    return forge.muted;
+  if (/^(def|class|async def|function|export|import|from|const|let|var)\b/.test(trimmed))
+    return forge.accent;
   if (/^\s*@/.test(line)) return forge.warn;
   return forge.text;
 }
@@ -48,14 +50,17 @@ function codeRows(parsed, startLine, height, width) {
 
 function scopeRows(parsed, selectedIndex, height) {
   const scopes = (parsed?.flat ?? []).filter((node) => node.kind !== "module");
-  if (scopes.length === 0) return [{ text: "no named scopes", color: forge.dim }];
+  if (scopes.length === 0) return [{ text: "no named scopes", color: forge.muted }];
   const rows = [];
-  const visible = Math.max(4, height);
+  const visible = Math.max(1, height);
   let start = 0;
   if (selectedIndex >= visible) start = selectedIndex - Math.floor(visible / 2);
   if (start > scopes.length - visible) start = Math.max(0, scopes.length - visible);
-  const slice = scopes.slice(start, Math.max(start + visible, selectedIndex + 1));
-  if (start > 0) rows.push({ text: `↑ ${start} more`, color: forge.dim });
+  const showPrevious = start > 0 && visible > 1;
+  const count = Math.max(1, visible - (showPrevious ? 1 : 0));
+  if (selectedIndex >= start + count) start = selectedIndex - count + 1;
+  const slice = scopes.slice(start, start + count);
+  if (showPrevious) rows.push({ text: `↑ ${start} more`, color: forge.muted });
   slice.forEach((scope, offset) => {
     const index = start + offset;
     const selected = index === selectedIndex;
@@ -77,13 +82,17 @@ export function ScopeScreen({
   selectedScopeIndex = 0,
   width = 78,
   height = 20,
-  files = [],
-  filesOffset = 0,
+  files: _files = [],
+  filesOffset: _filesOffset = 0,
 }) {
-  const parsed = useMemo(() => parsedProp ?? parseScopes(source, file ?? "file"), [parsedProp, source, file]);
+  const parsed = useMemo(
+    () => parsedProp ?? parseScopes(source, file ?? "file"),
+    [parsedProp, source, file],
+  );
   const stats = useMemo(() => scopeStats(parsed), [parsed]);
   const scopes = (parsed?.flat ?? []).filter((node) => node.kind !== "module");
-  const selected = scopes[Math.min(Math.max(0, selectedScopeIndex), Math.max(0, scopes.length - 1))] ?? null;
+  const selected =
+    scopes[Math.min(Math.max(0, selectedScopeIndex), Math.max(0, scopes.length - 1))] ?? null;
   const narrow = width < 88;
   const leftWidth = narrow ? width : Math.max(30, Math.min(46, Math.floor(width * 0.38)));
   const rightWidth = narrow ? width : width - leftWidth - 2;
@@ -95,20 +104,26 @@ export function ScopeScreen({
     Text,
     { color: forge.accent, bold: true, wrap: "truncate" },
     truncateToWidth(
-      `${file ?? "no file"}  ·  ${parsed?.language ?? "unknown"}  ·  ${stats.lines} lines  ·  ${stats.classes} classes  ·  ${stats.functions} functions`,
-      width
-    )
+      `${file ?? "no file"}  ·  ${parsed?.language ?? "unknown"}  ·  ${stats.lines} lines  ·  ${stats.classes} classes  ·  ${stats.functions} functions${parsed?.partial ? "  ·  PARTIAL" : ""}`,
+      width,
+    ),
   );
 
   const tree = h(
     Box,
-    { flexDirection: "column", width: leftWidth, height: treeHeight, overflow: "hidden", flexShrink: 0 },
+    {
+      flexDirection: "column",
+      width: leftWidth,
+      height: treeHeight,
+      overflow: "hidden",
+      flexShrink: 0,
+    },
     h(
       Text,
-      { color: forge.dim, wrap: "truncate" },
-      truncateToWidth(`SCOPES  ${scopes.length}  ·  [ ] file  j/k scope`, leftWidth)
+      { color: forge.muted, wrap: "truncate" },
+      truncateToWidth(`SCOPES  ${scopes.length}  ·  ←/→ file  ↑/↓ scope`, leftWidth),
     ),
-    ...scopeRows(parsed, selectedScopeIndex, treeHeight - 2).map((row, index) =>
+    ...scopeRows(parsed, selectedScopeIndex, treeHeight - 1).map((row, index) =>
       h(
         Text,
         {
@@ -118,19 +133,30 @@ export function ScopeScreen({
           bold: row.bold ?? false,
           wrap: "truncate",
         },
-        truncateToWidth(row.text, leftWidth)
-      )
-    )
+        truncateToWidth(row.text, leftWidth),
+      ),
+    ),
   );
 
   const codeStart = selected ? selected.startLine : 1;
   const code = h(
     Box,
-    { flexDirection: "column", width: rightWidth, height: codeHeight, overflow: "hidden", flexShrink: 0 },
+    {
+      flexDirection: "column",
+      width: rightWidth,
+      height: codeHeight,
+      overflow: "hidden",
+      flexShrink: 0,
+    },
     h(
       Text,
-      { color: forge.dim, wrap: "truncate" },
-      truncateToWidth(selected ? `${selected.kind} ${selected.name}  L${selected.startLine}-${selected.endLine}` : "SOURCE", rightWidth)
+      { color: forge.muted, wrap: "truncate" },
+      truncateToWidth(
+        selected
+          ? `${selected.kind} ${selected.name}  L${selected.startLine}-${selected.endLine}`
+          : "SOURCE",
+        rightWidth,
+      ),
     ),
     ...codeRows(parsed, codeStart, codeHeight - 2, rightWidth).map((row, index) =>
       h(
@@ -141,9 +167,9 @@ export function ScopeScreen({
           backgroundColor: selected && row.line === selected.startLine ? forgeBg.add : undefined,
           wrap: "truncate",
         },
-        truncateToWidth(row.text, rightWidth)
-      )
-    )
+        truncateToWidth(row.text, rightWidth),
+      ),
+    ),
   );
 
   return h(
@@ -156,14 +182,14 @@ export function ScopeScreen({
           { flexDirection: "column", height: paneHeight - 1, overflow: "hidden" },
           tree,
           h(Text, { color: forge.rule }, "─".repeat(width)),
-          code
+          code,
         )
       : h(
           Box,
           { flexDirection: "row", height: paneHeight - 1, overflow: "hidden" },
           tree,
           h(Text, { color: forge.rule }, "│"),
-          h(Box, { marginLeft: 1 }, code)
-        )
+          h(Box, { marginLeft: 1 }, code),
+        ),
   );
 }

@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Node ${{ matrix.node-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ["22", "24"]
+    # Keep default tests away from runner state and provider configuration.
+    # Provider tests supply their own mocked responses and fake credentials.
+    env:
+      HOME: ${{ runner.temp }}/matrix-ci-home
+      MATRIX_HOME: ${{ runner.temp }}/matrix-ci-home/.matrix
+      OPENROUTER_API_KEY: ""
+      MATRIX_API_KEY: ""
+      OPENAI_API_KEY: ""
+      OLLAMA_API_KEY: ""
+      MATRIX_API_BASE: ""
+      OPENAI_BASE_URL: ""
+      OLLAMA_HOST: ""
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Prepare isolated Matrix home
+        run: mkdir -p "$HOME" "$MATRIX_HOME"
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Install pytest
+        run: python -m pip install pytest
+      - name: Install npm dependencies
+        run: npm ci
+      - name: Run engineering gate
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run check 2>&1 | tee "${{ runner.temp }}/matrix-check-node${{ matrix.node-version }}.log"
+      - name: Verify internal package contents
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run pack:check 2>&1 | tee "${{ runner.temp }}/matrix-pack-node${{ matrix.node-version }}.log"
+      - name: Audit locked dependencies
+        shell: bash
+        run: |
+          set -o pipefail
+          npm audit 2>&1 | tee "${{ runner.temp }}/matrix-audit-node${{ matrix.node-version }}.log"
+      - name: Verify complete suite with hostile provider environment
+        shell: bash
+        env:
+          OPENROUTER_API_KEY: fake-openrouter
+          MATRIX_API_KEY: fake-matrix
+          OPENAI_API_KEY: fake-openai
+          OLLAMA_API_KEY: fake-ollama
+          MATRIX_API_BASE: http://127.0.0.1:9
+          OPENAI_BASE_URL: http://127.0.0.1:9
+          OLLAMA_HOST: http://127.0.0.1:9
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee "${{ runner.temp }}/matrix-hostile-node${{ matrix.node-version }}.log"
+      - name: Run responsive smoke checks
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run smoke 2>&1 | tee "${{ runner.temp }}/matrix-smoke-node${{ matrix.node-version }}.log"
+      - name: Run local benchmark smoke
+        shell: bash
+        run: |
+          set -o pipefail
+          node bin/matrix.mjs bench --iterations 1 2>&1 | tee "${{ runner.temp }}/matrix-bench-node${{ matrix.node-version }}.log"
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix-node${{ matrix.node-version }}-diagnostics
+          path: |
+            ${{ runner.temp }}/matrix-check-node${{ matrix.node-version }}.log
+            ${{ runner.temp }}/matrix-hostile-node${{ matrix.node-version }}.log
+            ${{ runner.temp }}/matrix-pack-node${{ matrix.node-version }}.log
+            ${{ runner.temp }}/matrix-audit-node${{ matrix.node-version }}.log
+            ${{ runner.temp }}/matrix-smoke-node${{ matrix.node-version }}.log
+            ${{ runner.temp }}/matrix-bench-node${{ matrix.node-version }}.log
+          if-no-files-found: ignore
+          retention-days: 7

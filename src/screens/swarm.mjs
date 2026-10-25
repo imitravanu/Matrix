@@ -11,14 +11,14 @@ import { sanitizeText, truncateToWidth } from "../../lib/text.mjs";
 const h = React.createElement;
 
 const STATUS_COLOR = {
-  idle: forge.dim,
+  idle: forge.muted,
   active: forge.accent,
   waiting: forge.warn,
   done: forge.ok,
   applied: forge.ok,
   error: forge.err,
   denied: forge.err,
-  skipped: forge.dim,
+  skipped: forge.muted,
 };
 
 const STATUS_GLYPH = {
@@ -49,36 +49,62 @@ export function laneBodyLines(lane, width = 30, height = 12) {
 
   if (lane.id === "planner") {
     if (lane.steps.length === 0) {
-      lines.push({ text: "no plan yet", color: forge.dim });
+      lines.push({ text: "no plan yet", color: forge.muted });
     } else {
       for (const step of lane.steps.slice(0, 8)) {
         const glyph =
-          step.status === "done" ? "✓" : step.status === "active" ? "◐" : step.status === "skipped" ? "-" : step.status === "error" ? "✗" : "·";
-        const color = step.status === "active" ? forge.accent : step.status === "done" ? forge.muted : forge.dim;
+          step.status === "done"
+            ? "✓"
+            : step.status === "active"
+              ? "◐"
+              : step.status === "skipped"
+                ? "-"
+                : step.status === "error"
+                  ? "✗"
+                  : "·";
+        const color =
+          step.status === "active"
+            ? forge.accent
+            : step.status === "done"
+              ? forge.muted
+              : forge.muted;
         lines.push({ text: truncateToWidth(`${glyph} ${step.title}`, w), color });
       }
     }
     lines.push({ text: "", color: forge.muted });
-    lines.push({ text: truncateToWidth("LOG", w), color: forge.dim, dim: true });
+    lines.push({ text: truncateToWidth("LOG", w), color: forge.muted, dim: true });
     for (const log of lane.logs.slice(-Math.max(2, height - lines.length - 1))) {
       lines.push({ text: truncateToWidth(sanitizeText(log.text), w), color: logColor(log.kind) });
     }
   } else if (lane.id === "forge") {
-    lines.push({ text: truncateToWidth(lane.file ?? "no proposal", w), color: lane.file ? forge.text : forge.dim });
+    lines.push({
+      text: truncateToWidth(lane.file ?? "no proposal", w),
+      color: lane.file ? forge.text : forge.muted,
+    });
     if (lane.scope) lines.push({ text: truncateToWidth(lane.scope, w), color: forge.muted });
     lines.push({
       text: truncateToWidth(
-        lane.stats ? `+${lane.stats.adds} −${lane.stats.dels} · ${lane.statusText}` : lane.statusText,
-        w
+        lane.stats
+          ? `+${lane.stats.adds} −${lane.stats.dels} · ${lane.statusText}`
+          : lane.statusText,
+        w,
       ),
-      color: lane.status === "waiting" ? forge.warn : lane.status === "denied" ? forge.err : forge.accent,
+      color:
+        lane.status === "waiting"
+          ? forge.warn
+          : lane.status === "denied"
+            ? forge.err
+            : forge.accent,
     });
     lines.push({ text: "", color: forge.muted });
     if (lane.diffLines.length > 0) {
       for (const line of lane.diffLines.slice(-Math.max(3, height - lines.length - 1))) {
-        if (line.startsWith("@@")) lines.push({ text: truncateToWidth(line, w), color: forge.info });
-        else if (line.startsWith("+")) lines.push({ text: truncateToWidth(line, w), color: forge.text, bg: forgeBg.add });
-        else if (line.startsWith("-")) lines.push({ text: truncateToWidth(line, w), color: forge.text, bg: forgeBg.del });
+        if (line.startsWith("@@"))
+          lines.push({ text: truncateToWidth(line, w), color: forge.info });
+        else if (line.startsWith("+"))
+          lines.push({ text: truncateToWidth(line, w), color: forge.text, bg: forgeBg.add });
+        else if (line.startsWith("-"))
+          lines.push({ text: truncateToWidth(line, w), color: forge.text, bg: forgeBg.del });
         else lines.push({ text: truncateToWidth(line, w), color: forge.muted });
       }
     } else {
@@ -89,14 +115,14 @@ export function laneBodyLines(lane, width = 30, height = 12) {
   } else {
     lines.push({
       text: truncateToWidth(lane.command ? `$ ${lane.command}` : "tests not run", w),
-      color: lane.command ? forge.text : forge.dim,
+      color: lane.command ? forge.text : forge.muted,
     });
     lines.push({
       text: truncateToWidth(
         lane.passed != null
           ? `${lane.passed} passed · ${lane.failed ?? 0} failed${lane.duration ? ` · ${lane.duration}` : ""}`
-          : lane.summary ?? "waiting for verification",
-        w
+          : (lane.summary ?? "waiting for verification"),
+        w,
       ),
       color: lane.failed > 0 ? forge.err : lane.passed != null ? forge.ok : forge.muted,
       bold: lane.passed != null,
@@ -111,22 +137,18 @@ export function laneBodyLines(lane, width = 30, height = 12) {
   return lines;
 }
 
-function Panel({ lane, width, height, focused, frame = 0 }) {
-  const color = STATUS_COLOR[lane.status] ?? forge.dim;
+function Panel({ lane, width, height, focused, frame: _frame = 0 }) {
+  const color = STATUS_COLOR[lane.status] ?? forge.muted;
   const glyph = STATUS_GLYPH[lane.status] ?? "·";
   const innerWidth = Math.max(8, width - 4);
   const innerHeight = Math.max(2, height - 4);
   const body = laneBodyLines(lane, innerWidth, innerHeight - 2);
   const rows = [
+    h(Text, { key: "title", color, bold: true, wrap: "truncate" }, `${glyph} ${lane.title}`),
     h(
       Text,
-      { key: "title", color, bold: true, wrap: "truncate" },
-      `${glyph} ${lane.title}`
-    ),
-    h(
-      Text,
-      { key: "agent", color: forge.dim, wrap: "truncate" },
-      truncateToWidth(lane.subtitle || lane.agent || "", innerWidth)
+      { key: "agent", color: forge.muted, wrap: "truncate" },
+      truncateToWidth(lane.subtitle || lane.agent || "", innerWidth),
     ),
     ...body.map((line, index) =>
       h(
@@ -138,8 +160,8 @@ function Panel({ lane, width, height, focused, frame = 0 }) {
           dim: line.dim ?? false,
           wrap: "truncate",
         },
-        line.text
-      )
+        line.text,
+      ),
     ),
   ];
   return h(
@@ -154,7 +176,7 @@ function Panel({ lane, width, height, focused, frame = 0 }) {
       overflow: "hidden",
       flexShrink: 0,
     },
-    ...rows.slice(0, Math.max(1, height - 2))
+    ...rows.slice(0, Math.max(1, height - 2)),
   );
 }
 
@@ -186,15 +208,15 @@ export function SwarmScreen({ state, width = 78, height = 20, frame = 0 }) {
               Text,
               {
                 key: lane.id,
-                color: index === layout.focusedLane ? forge.accent : forge.dim,
+                color: index === layout.focusedLane ? forge.accent : forge.muted,
                 backgroundColor: index === layout.focusedLane ? forge.rule : undefined,
                 bold: index === layout.focusedLane,
                 wrap: "truncate",
               },
-              ` ${index + 1}:${lane.title} `
-            )
+              ` ${index + 1}:${lane.title} `,
+            ),
           ),
-          width >= 52 ? h(Text, { color: forge.dim, wrap: "truncate" }, "  ←/→ focus") : null
+          width >= 52 ? h(Text, { color: forge.muted, wrap: "truncate" }, "  ←/→ focus") : null,
         )
       : null;
 
@@ -215,9 +237,9 @@ export function SwarmScreen({ state, width = 78, height = 20, frame = 0 }) {
             height: panelHeight,
             focused: index === layout.focusedLane,
             frame,
-          })
-        )
-      )
-    )
+          }),
+        ),
+      ),
+    ),
   );
 }

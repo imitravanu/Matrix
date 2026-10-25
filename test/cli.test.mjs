@@ -7,15 +7,6 @@ import { HELP_TEXT, parseArgv } from "../lib/cli.mjs";
 import { formatDoctor, runDoctor } from "../lib/doctor.mjs";
 import { copyDemo } from "./helpers.mjs";
 
-const homeWith = (t) => {
-  const previous = process.env.MATRIX_HOME;
-  t.after(() => {
-    if (previous === undefined) delete process.env.MATRIX_HOME;
-    else process.env.MATRIX_HOME = previous;
-  });
-  return previous;
-};
-
 test("parseArgv accepts commands, tasks, flags and --", () => {
   const doctor = parseArgv(["doctor", "--json", "--demo"]);
   assert.equal(doctor.command, "doctor");
@@ -28,7 +19,15 @@ test("parseArgv accepts commands, tasks, flags and --", () => {
   assert.equal(task.task, "Fix the bounds bug");
   assert.equal(task.cwd, "/tmp/example");
 
-  const vision = parseArgv(["vision", "telemetry", "--cols=80", "--rows", "20", "--png", "out.png"]);
+  const vision = parseArgv([
+    "vision",
+    "telemetry",
+    "--cols=80",
+    "--rows",
+    "20",
+    "--png",
+    "out.png",
+  ]);
   assert.equal(vision.command, "vision");
   assert.equal(vision.graphMode, "telemetry");
   assert.equal(vision.cols, 80);
@@ -77,6 +76,23 @@ test("parseArgv fails loudly on malformed input", () => {
   assert.throws(() => parseArgv(["--json=1"]), /does not take a value/);
   assert.throws(() => parseArgv(["--cols", "0"]), /positive integer/);
   assert.throws(() => parseArgv(["--rows", "nope"]), /positive integer/);
+  assert.throws(() => parseArgv(["--cols", "80junk"]), /positive integer/);
+  assert.throws(() => parseArgv(["--rows", "1.5"]), /positive integer/);
+  assert.throws(() => parseArgv(["--model", "--json"]), /--model expects a value/);
+  assert.throws(() => parseArgv(["--cols", "--rows"]), /--cols expects a value/);
+  assert.throws(() => parseArgv(["--model="]), /--model expects a value/);
+  assert.throws(
+    () => parseArgv(["vision", "bogus"]),
+    /vision expects scope, workspace or telemetry/,
+  );
+  assert.throws(
+    () => parseArgv(["vision", "scope", "extra"]),
+    /does not accept positional arguments/,
+  );
+  assert.throws(() => parseArgv(["doctor", "unexpected"]), /does not accept positional arguments/);
+  assert.throws(() => parseArgv(["smoke", "--cols", "80"]), /--cols is only valid with/);
+  assert.throws(() => parseArgv(["dump", "--json"]), /--json is only valid with/);
+  assert.throws(() => parseArgv(["bench", "--screen", "chat"]), /--screen is only valid with/);
 });
 
 test("runDoctor reports real capabilities and formatDoctor stays readable", (t) => {
@@ -96,7 +112,17 @@ test("runDoctor reports real capabilities and formatDoctor stays readable", (t) 
   });
   const names = report.checks.map((check) => check.name);
   assert.equal(new Set(names).size, names.length);
-  for (const required of ["node", "terminal", "truecolor", "workspace", "tests", "python3", "pytest", "demo", "matrix-home"]) {
+  for (const required of [
+    "node",
+    "terminal",
+    "truecolor",
+    "workspace",
+    "tests",
+    "python3",
+    "pytest",
+    "demo",
+    "matrix-home",
+  ]) {
     assert.ok(names.includes(required), `missing check ${required}`);
   }
   const workspace = report.checks.find((check) => check.name === "workspace");

@@ -12,6 +12,7 @@ import {
   formatDuration,
   padToWidth,
   truncateToWidth,
+  wrapCodeToWidth,
   wrapToWidth,
 } from "../lib/text.mjs";
 
@@ -49,7 +50,12 @@ export function cardRow(text, width, options = {}) {
 }
 
 /** Build a complete bordered card from body line descriptors. */
-export function card(title, width, body, { titleColor = forge.accent, borderColor = CARD_BORDER } = {}) {
+export function card(
+  title,
+  width,
+  body,
+  { titleColor = forge.accent, borderColor = CARD_BORDER } = {},
+) {
   const w = normalizeWidth(width);
   const lines = [{ ...cardTop(title, w, { color: titleColor }), color: titleColor }];
   for (const row of body) {
@@ -71,7 +77,8 @@ export function card(title, width, body, { titleColor = forge.accent, borderColo
 
 export function renderPlanCard(plan = [], activeIndex = 0, width = 76, options = {}) {
   const rows = Array.isArray(plan) ? plan : [];
-  if (rows.length === 0) return card("AGENT PLAN", width, [{ text: "no plan yet", color: forge.muted }]);
+  if (rows.length === 0)
+    return card("AGENT PLAN", width, [{ text: "no plan yet", color: forge.muted }]);
 
   const done = rows.filter((step) => step.status === "done").length;
   const skipped = rows.filter((step) => step.status === "skipped").length;
@@ -87,7 +94,8 @@ export function renderPlanCard(plan = [], activeIndex = 0, width = 76, options =
   ];
 
   rows.forEach((step, index) => {
-    const status = step.status ?? (index < activeIndex ? "done" : index === activeIndex ? "active" : "pending");
+    const status =
+      step.status ?? (index < activeIndex ? "done" : index === activeIndex ? "active" : "pending");
     let glyph = "·";
     let color = forge.muted;
     if (status === "done") {
@@ -101,7 +109,7 @@ export function renderPlanCard(plan = [], activeIndex = 0, width = 76, options =
       color = forge.err;
     } else if (status === "skipped") {
       glyph = "-";
-      color = forge.dim;
+      color = forge.muted;
     }
     const duration = step.durationMs ? ` (${formatDuration(step.durationMs)})` : "";
     const suffix = status === "skipped" ? " · skipped" : "";
@@ -112,7 +120,8 @@ export function renderPlanCard(plan = [], activeIndex = 0, width = 76, options =
     });
   });
 
-  if (skipped > 0) lines.push({ text: `${skipped} step${skipped === 1 ? "" : "s"} skipped`, color: forge.dim });
+  if (skipped > 0)
+    lines.push({ text: `${skipped} step${skipped === 1 ? "" : "s"} skipped`, color: forge.muted });
   return card("EXECUTION PLAN", width, lines);
 }
 
@@ -120,16 +129,35 @@ export function renderPlanCard(plan = [], activeIndex = 0, width = 76, options =
 // Thinking
 // --------------------------------------------------------------------------
 
-export function renderThoughtCard(reasoning = "", elapsedTime = 1, isStreaming = false, width = 76, expanded = false) {
+const THOUGHT_FULL_LAYOUT_LIMIT = 64 * 1024;
+const THOUGHT_PREVIEW_LAYOUT_LIMIT = 16 * 1024;
+
+export function renderThoughtCard(
+  reasoning = "",
+  elapsedTime = 1,
+  isStreaming = false,
+  width = 76,
+  expanded = false,
+) {
   const w = normalizeWidth(width);
   const inner = w - 4;
   const text = String(reasoning ?? "").trim();
   if (!text) {
-    return card("THINKING", w, [{ text: isStreaming ? "waiting for reasoning tokens…" : "no reasoning emitted", color: forge.muted }]);
+    return card("THINKING", w, [
+      {
+        text: isStreaming ? "waiting for reasoning tokens…" : "no reasoning emitted",
+        color: forge.muted,
+      },
+    ]);
   }
 
+  // A collapsed large thought needs only its first rows. Keep exact hidden-line
+  // counts for ordinary cards, but never wrap a huge source just to discard it.
+  const boundedPreview = !expanded && !isStreaming && text.length > THOUGHT_FULL_LAYOUT_LIMIT;
+  const previewLimit = Math.min(THOUGHT_PREVIEW_LAYOUT_LIMIT, Math.max(2048, inner * 16));
+  const source = boundedPreview ? text.slice(0, previewLimit) : text;
   const all = [];
-  for (const paragraph of text.split(/\n{2,}/)) {
+  for (const paragraph of source.split(/\n{2,}/)) {
     for (const line of wrapToWidth(paragraph, inner)) all.push(line);
     all.push("");
   }
@@ -137,20 +165,25 @@ export function renderThoughtCard(reasoning = "", elapsedTime = 1, isStreaming =
 
   let visible = all;
   let hidden = 0;
-  if (!expanded && !isStreaming && all.length > 8) {
+  if (!expanded && !isStreaming && (all.length > 8 || boundedPreview)) {
     visible = all.slice(0, 8);
-    hidden = all.length - 8;
+    hidden = boundedPreview ? null : all.length - 8;
   }
 
   const body = visible.map((line) => ({
     text: line,
     color: line.startsWith(">") ? forge.accent : forge.muted,
   }));
-  if (hidden > 0) body.push({ text: `… ${hidden} more lines (t to expand)`, color: forge.dim });
+  if (hidden === null)
+    body.push({ text: "… additional reasoning · /thoughts to expand", color: forge.muted });
+  else if (hidden > 0)
+    body.push({ text: `… ${hidden} more lines · /thoughts to expand`, color: forge.muted });
 
   const chars = text.length;
   const elapsed = formatDuration(Number(elapsedTime) * 1000 || 0);
-  const title = isStreaming ? `THINKING · ${elapsed} · ${chars} chars` : `THINKING · ${chars} chars`;
+  const title = isStreaming
+    ? `THINKING · ${elapsed} · ${chars} chars`
+    : `THINKING · ${chars} chars`;
   return card(title, w, body);
 }
 
@@ -158,7 +191,13 @@ export function renderThoughtCard(reasoning = "", elapsedTime = 1, isStreaming =
 // Read
 // --------------------------------------------------------------------------
 
-export function renderReadFileCard(filePath, scope = "", snippet = [], duration = "0.1s", width = 76) {
+export function renderReadFileCard(
+  filePath,
+  scope = "",
+  snippet = [],
+  duration = "0.1s",
+  width = 76,
+) {
   // New object form: renderReadFileCard({path, scope, snippet, duration}, width)
   if (filePath && typeof filePath === "object") {
     const obj = filePath;
@@ -185,9 +224,19 @@ export function foldDiffLines(diffLines = [], { expanded = false, context = 1 } 
   const keep = new Set();
   lines.forEach((line, index) => {
     if (line.startsWith("+") && !line.startsWith("+++")) {
-      for (let i = Math.max(0, index - context); i <= Math.min(lines.length - 1, index + context); i++) keep.add(i);
+      for (
+        let i = Math.max(0, index - context);
+        i <= Math.min(lines.length - 1, index + context);
+        i++
+      )
+        keep.add(i);
     } else if (line.startsWith("-") && !line.startsWith("---")) {
-      for (let i = Math.max(0, index - context); i <= Math.min(lines.length - 1, index + context); i++) keep.add(i);
+      for (
+        let i = Math.max(0, index - context);
+        i <= Math.min(lines.length - 1, index + context);
+        i++
+      )
+        keep.add(i);
     } else if (line.startsWith("@@")) {
       keep.add(index);
     }
@@ -204,11 +253,20 @@ export function foldDiffLines(diffLines = [], { expanded = false, context = 1 } 
   return out;
 }
 
-export function renderEditFileCard(filePath, scope = "", diffLines = [], status = "approved", width = 76, options = {}) {
+export function renderEditFileCard(
+  filePath,
+  scope = "",
+  diffLines = [],
+  status = "approved",
+  width = 76,
+  options = {},
+) {
   if (filePath && typeof filePath === "object") {
     const obj = filePath;
     width = typeof scope === "number" ? scope : width;
-    return renderEditFileCard(obj.path, obj.scope, obj.diff ?? [], obj.status, width, { expanded: obj.expanded });
+    return renderEditFileCard(obj.path, obj.scope, obj.diff ?? [], obj.status, width, {
+      expanded: obj.expanded,
+    });
   }
 
   const w = normalizeWidth(width);
@@ -220,26 +278,41 @@ export function renderEditFileCard(filePath, scope = "", diffLines = [], status 
   const dels = (diffLines ?? []).filter((l) => l.startsWith("-") && !l.startsWith("---")).length;
   body.push({
     text: `+${adds} −${dels} · ${status}`,
-    color: status === "denied" ? forge.err : status === "approved" || status === "applied" ? forge.ok : forge.warn,
+    color:
+      status === "denied"
+        ? forge.err
+        : status === "approved" || status === "applied"
+          ? forge.ok
+          : forge.warn,
   });
 
   for (const row of rows) {
     if (row && typeof row === "object" && row.fold) {
-      body.push({ text: `… ${row.skipped} unchanged line${row.skipped === 1 ? "" : "s"}`, color: forge.dim });
+      body.push({
+        text: `… ${row.skipped} unchanged line${row.skipped === 1 ? "" : "s"}`,
+        color: forge.muted,
+      });
       continue;
     }
     const line = String(row ?? "");
     if (line.startsWith("+++") || line.startsWith("---")) continue;
     if (line.startsWith("@@")) {
       body.push({ text: line, color: forge.info, bold: true });
-    } else if (line.startsWith("+")) {
-      body.push({ text: line, color: forge.text, bg: forgeBg.add });
-    } else if (line.startsWith("-")) {
-      body.push({ text: line, color: forge.text, bg: forgeBg.del });
-    } else if (line.startsWith(" ")) {
-      body.push({ text: line, color: forge.muted });
+    } else if (line.startsWith("+") || line.startsWith("-") || line.startsWith(" ")) {
+      const addition = line.startsWith("+");
+      const deletion = line.startsWith("-");
+      const prefix = `${line[0]} `;
+      const parts = wrapCodeToWidth(line.slice(1), w - 6);
+      for (const [index, part] of parts.entries()) {
+        body.push({
+          text: `${index === 0 ? prefix : "  "}${part}`,
+          color: addition || deletion ? forge.text : forge.muted,
+          ...(addition ? { bg: forgeBg.add } : deletion ? { bg: forgeBg.del } : {}),
+        });
+      }
     } else {
-      body.push({ text: line, color: forge.muted });
+      for (const part of wrapCodeToWidth(line, w - 4))
+        body.push({ text: part, color: forge.muted });
     }
   }
 
@@ -250,13 +323,21 @@ export function renderEditFileCard(filePath, scope = "", diffLines = [], status 
 // Verification
 // --------------------------------------------------------------------------
 
-export function renderVerifyTestsCard(cmd, testResults = [], duration = "0.8s", width = 76, options = {}) {
+export function renderVerifyTestsCard(
+  cmd,
+  testResults = [],
+  duration = "0.8s",
+  width = 76,
+  options = {},
+) {
   if (cmd && typeof cmd === "object") {
     const obj = cmd;
     width = typeof testResults === "number" ? testResults : width;
     return renderVerifyTestsCard(obj.cmd, obj.results ?? [], obj.duration, width, obj);
   }
 
+  const w = normalizeWidth(width);
+  const inner = w - 4;
   const rows = Array.isArray(testResults) ? testResults : [];
   const passed = Number.isFinite(Number(options.passed))
     ? Number(options.passed)
@@ -278,12 +359,15 @@ export function renderVerifyTestsCard(cmd, testResults = [], duration = "0.8s", 
       .replace(/\s+/g, " ")
       .trim();
     body.push({
-      text: `${result.pass ? "✓" : "✗"} ${truncateToWidth(clean, width - 8)}`,
+      text: `${result.pass ? "✓" : "✗"} ${truncateToWidth(clean, w - 8)}`,
       color: result.pass ? forge.ok : forge.err,
     });
   }
   if (rows.length > (options.maxRows ?? 12)) {
-    body.push({ text: `… ${rows.length - (options.maxRows ?? 12)} more results`, color: forge.dim });
+    body.push({
+      text: `… ${rows.length - (options.maxRows ?? 12)} more results`,
+      color: forge.muted,
+    });
   }
   if (rows.length > 0) {
     body.push({
@@ -292,9 +376,61 @@ export function renderVerifyTestsCard(cmd, testResults = [], duration = "0.8s", 
       bold: true,
     });
   } else if (options.summary) {
-    body.push({ text: String(options.summary), color: options.ok === false ? forge.err : forge.muted });
+    body.push({
+      text: String(options.summary),
+      color: options.ok === false ? forge.err : forge.muted,
+    });
   }
-  return card("VERIFICATION", width, body);
+
+  const sourceOutput = Array.isArray(options.output)
+    ? options.output
+    : Array.isArray(options.lines)
+      ? options.lines
+      : [];
+  // The process layer already retains the latest 400 redacted lines. Keep the
+  // same bound for live cards, resumed sessions, and third-party card callers.
+  const output = sourceOutput.slice(-400).map((line) => String(line ?? ""));
+  const reportedLineCount = Number(options.outputLineCount);
+  const outputLineCount = Math.max(
+    output.length,
+    sourceOutput.length,
+    Number.isFinite(reportedLineCount) ? Math.max(0, Math.floor(reportedLineCount)) : 0,
+  );
+  const outputTruncated = Boolean(options.outputTruncated) || outputLineCount > output.length;
+  if (output.length > 0) {
+    const retention =
+      outputLineCount > output.length
+        ? `last ${output.length} of ${outputLineCount} lines`
+        : `${output.length} line${output.length === 1 ? "" : "s"} retained${outputTruncated ? " · earlier output truncated" : ""}`;
+    const retentionLabel = `retained output · ${retention}`;
+    if (displayWidth(retentionLabel) <= inner) {
+      body.push({ text: retentionLabel, color: outputTruncated ? forge.warn : forge.muted });
+    } else {
+      body.push({ text: "retained output", color: outputTruncated ? forge.warn : forge.muted });
+      for (const part of wrapToWidth(retention, inner)) {
+        body.push({ text: part, color: outputTruncated ? forge.warn : forge.muted });
+      }
+    }
+
+    const hasFailure =
+      options.ok === false ||
+      failed > 0 ||
+      ["failed", "timedOut", "aborted", "unverified"].includes(options.verificationStatus);
+    const expanded = Boolean(options.expanded);
+    const visibleOutput = expanded ? output : hasFailure || options.running ? output.slice(-8) : [];
+    const hint = expanded
+      ? "Alt+O collapse · PgUp/PgDn scroll"
+      : visibleOutput.length > 0 && visibleOutput.length < output.length
+        ? `showing last ${visibleOutput.length} retained · Alt+O expand`
+        : "Alt+O expand retained output";
+    for (const part of wrapToWidth(hint, inner)) body.push({ text: part, color: forge.muted });
+    for (const raw of visibleOutput) {
+      // Hard-wrap without word deletion so every retained line remains
+      // inspectable, including long paths, URLs, and assertion tails.
+      for (const part of wrapCodeToWidth(raw, inner)) body.push({ text: part, color: forge.text });
+    }
+  }
+  return card("VERIFICATION", w, body);
 }
 
 // --------------------------------------------------------------------------
@@ -311,7 +447,10 @@ export function formatCodeBlock(codeLines = [], lang = "", width = 76) {
     const line = String(raw).replace(/\t/g, "    ");
     out.push({
       text: `│ ${padToWidth(truncateToWidth(line, inner), inner)} │`,
-      color: line.trimStart().startsWith("#") || line.trimStart().startsWith("//") ? forge.muted : forge.text,
+      color:
+        line.trimStart().startsWith("#") || line.trimStart().startsWith("//")
+          ? forge.muted
+          : forge.text,
     });
   }
   out.push({ text: `└${"─".repeat(w - 2)}┘`, color: forge.dim });
@@ -331,7 +470,10 @@ function codeBlockRuns(lines, lang, width, scrollX = 0) {
     const trimmed = text.trimStart();
     out.push({
       text: `│ ${padToWidth(text, inner)} │`,
-      color: trimmed.startsWith("#") || trimmed.startsWith("//") || trimmed.startsWith("--") ? forge.muted : forge.text,
+      color:
+        trimmed.startsWith("#") || trimmed.startsWith("//") || trimmed.startsWith("--")
+          ? forge.muted
+          : forge.text,
     });
   }
   out.push({ text: `└${"─".repeat(w - 2)}┘`, color: forge.dim });
@@ -344,7 +486,9 @@ function codeBlockRuns(lines, lang, width, scrollX = 0) {
  * (live streaming).
  */
 export function parseContentBlocks(content = "") {
-  const lines = String(content ?? "").replace(/\r\n?/g, "\n").split("\n");
+  const lines = String(content ?? "")
+    .replace(/\r\n?/g, "\n")
+    .split("\n");
   const blocks = [];
   let prose = [];
   let code = null;
@@ -417,7 +561,13 @@ export function renderContentWithCodeBlocks(contentStr, width = 76, options = {}
         for (const line of wrapped) {
           out.push({
             text: line,
-            color: isHeading ? forge.accent : isBullet ? forge.text : isQuote ? forge.muted : forge.text,
+            color: isHeading
+              ? forge.accent
+              : isBullet
+                ? forge.text
+                : isQuote
+                  ? forge.muted
+                  : forge.text,
             bold: isHeading,
             ...(isBullet ? {} : {}),
           });

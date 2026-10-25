@@ -9,7 +9,8 @@
 import React from "react";
 import { renderToString } from "ink";
 
-import { Frame, SCREENS } from "./matrix.mjs";
+import { Frame } from "./frame.mjs";
+import { ALL_VIEWS, SCREENS } from "./views.mjs";
 import { stripAnsi, displayWidth } from "../lib/text.mjs";
 
 const h = React.createElement;
@@ -34,7 +35,7 @@ function withLayout(columns, rows, fn) {
 /** Render an arbitrary element to ANSI text at an exact terminal geometry. */
 export function renderAt(element, { columns = DEFAULTS.columns, rows = DEFAULTS.rows } = {}) {
   return withLayout(columns, rows, () =>
-    renderToString(element, { columns: Math.max(20, columns) })
+    renderToString(element, { columns: Math.max(20, columns) }),
   );
 }
 
@@ -43,10 +44,10 @@ export function renderScreen(screen, props = {}, size = DEFAULTS) {
   return renderAt(h(Frame, { screen, ...props }), size);
 }
 
-/** Render every screen at one geometry. */
+/** Render all six primary screens plus the model/help overlays at one geometry. */
 export function renderAllScreens(props = {}, size = DEFAULTS) {
   const out = {};
-  for (const screen of SCREENS) out[screen] = renderScreen(screen, props, size);
+  for (const screen of ALL_VIEWS) out[screen] = renderScreen(screen, props, size);
   return out;
 }
 

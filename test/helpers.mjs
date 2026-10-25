@@ -10,6 +10,28 @@ import { stripAnsi } from "../lib/text.mjs";
 export const PACKAGE_ROOT = fileURLToPath(new URL("..", import.meta.url));
 export const DEMO_ROOT = join(PACKAGE_ROOT, "demo-project");
 
+/** Six main screens in navigation order, followed by the model/help overlays. */
+export const ALL_VIEW_NAMES = Object.freeze([
+  "empty",
+  "chat",
+  "permission",
+  "swarm",
+  "scope",
+  "vision",
+  "model",
+  "help",
+]);
+
+export const PROVIDER_ENVIRONMENT_KEYS = Object.freeze([
+  "OPENROUTER_API_KEY",
+  "MATRIX_API_KEY",
+  "MATRIX_API_BASE",
+  "OPENAI_API_KEY",
+  "OPENAI_BASE_URL",
+  "OLLAMA_API_KEY",
+  "OLLAMA_HOST",
+]);
+
 export function makeTempDir(prefix = "matrix-test-") {
   return mkdtempSync(join(tmpdir(), prefix));
 }
@@ -40,13 +62,56 @@ export function frameText(app) {
 
 export async function waitFor(predicate, { timeoutMs = 8000, intervalMs = 30 } = {}) {
   const started = Date.now();
-  let last = null;
+  let last;
   while (Date.now() - started < timeoutMs) {
     last = predicate();
     if (last) return last;
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
   return null;
+}
+
+/** Temporarily replace environment values and return an idempotent restore function. */
+export function patchEnv(values) {
+  const previous = new Map();
+  for (const [key, value] of Object.entries(values)) {
+    previous.set(key, process.env[key]);
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = String(value);
+  }
+  let restored = false;
+  return () => {
+    if (restored) return;
+    restored = true;
+    for (const [key, value] of previous) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  };
+}
+
+/**
+ * Intercept global fetch for a network-free test. Without an implementation,
+ * every request fails; an optional mock can supply a deterministic Response.
+ */
+export function installFetchTrap(implementation = null) {
+  const previousFetch = globalThis.fetch;
+  const calls = [];
+  const trappedFetch = async (...args) => {
+    calls.push(args);
+    if (typeof implementation === "function") return implementation(...args);
+    throw new Error("Unexpected fetch in a network-free test");
+  };
+  globalThis.fetch = trappedFetch;
+  let restored = false;
+  return {
+    calls,
+    restore() {
+      if (restored) return;
+      restored = true;
+      globalThis.fetch = previousFetch;
+    },
+  };
 }
 
 /** Build a streaming HTTP response from an array of OpenRouter SSE chunks. */
@@ -81,7 +146,12 @@ export function toolCallChunks(id, name, args) {
         {
           delta: {
             tool_calls: [
-              { index: 0, id, type: "function", function: { name, arguments: json.slice(0, split) } },
+              {
+                index: 0,
+                id,
+                type: "function",
+                function: { name, arguments: json.slice(0, split) },
+              },
             ],
           },
         },

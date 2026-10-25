@@ -18,20 +18,23 @@ No API key is required for the default Local Forge engine. Remote OpenRouter mod
   auto-approval, `n`/`Esc` denies it and leaves the file untouched.
 - **Undo** restores the exact bytes from before the edit. It refuses to overwrite a file that was
   changed after Matrix wrote it, including after resuming a saved session.
-- **Verification** runs the detected test command and shows its real output and real pass/fail
-  totals. A failing test does not silently auto-revert the patch.
+- **Verification** runs the detected test command and reports real pass/fail totals and failure
+  summaries. A failing test does not silently auto-revert the patch. Failed-output tails remain
+  visible, and `Alt+O` expands every retained line for scrollable inspection.
 - **The scope lens** is built from a local structural parser, not a mock AST. Python uses
   indentation; JavaScript/TypeScript use a masked brace parser; Rust, Go and Ruby use structural
   declarations.
 - **Vision** is a real pixel canvas rendered as half-block truecolor and exportable as a PNG.
 - **Swarm lanes** are three views of one real agent event stream. They are not three independent
   models running concurrently.
-- **Sessions** are saved locally with their transcript, model, usage, metrics, and last patch. Resume
-  can re-arm undo when the post-patch file still matches its stored fingerprint.
+- **Sessions** are saved locally with bounded newest-first transcripts, model, usage, metrics, and
+  versioned `undoRun` recovery state. Resume can re-arm undo when every post-patch file still matches
+  its stored fingerprint.
 
 ## Requirements
 
-- Node.js 22 or newer (developed against Node 24).
+- Node.js 22 or newer (developed against Node 24). The development lint toolchain requires Node 22.13+;
+  the complete engineering gate is verified on current Node 22 and 24.
 - A truecolor terminal is recommended for Vision.
 - Python 3 and pytest are only required for the bundled demo and its tests. Other workspaces use
   their detected test runner.
@@ -71,52 +74,66 @@ node bin/matrix.mjs vision scope --demo --png vision.png
 node bin/matrix.mjs dump --demo --screen chat --mono
 node bin/matrix.mjs smoke --demo            # 32 render checks across four sizes
 node bin/matrix.mjs bench --iterations 20
+node bin/matrix.mjs bench --stress --suite transcript --iterations 3
 ```
 
 Useful flags:
 
-| Flag | Meaning |
-| --- | --- |
-| `-C, --cwd <dir>` | Operate on another workspace. |
-| `--demo` | Use the bundled demo. |
-| `--model <id-or-short>` | `local`, `sonnet`, `gemini`, `gpt-mini`, `deepseek`, `qwen`. |
-| `--offline` | Force Local Forge. |
-| `--yes` | Auto-approve edits. Use with care. |
-| `--json` | Machine-readable output where supported. |
-| `--resume`, `--session <id>` | Resume a saved interactive session. |
-| `--cols <n> --rows <n>` | Fixed geometry for `dump` and `vision`. |
-| `--png <path>` | Export a Vision canvas as a real PNG. |
-| `--mono`, `--no-color` | Strip colour. |
-| `--no-alt`, `--no-sync` | Disable alternate screen / synchronized output. |
+| Flag                         | Meaning                                                                                   |
+| ---------------------------- | ----------------------------------------------------------------------------------------- |
+| `-C, --cwd <dir>`            | Operate on another workspace.                                                             |
+| `--demo`                     | Use the bundled demo.                                                                     |
+| `--model <id-or-short>`      | `local`, `sonnet`, `gemini`, `gpt-mini`, `deepseek`, `qwen`, `ollama`, or `ollama/<tag>`. |
+| `--offline`                  | Force Local Forge.                                                                        |
+| `--yes`                      | Auto-approve edits. Use with care. Does not grant test trust.                             |
+| `--allow-tests`              | Allow the first exact test plan in a headless invocation; required for headless tests.    |
+| `--json`                     | Machine-readable output where supported.                                                  |
+| `--resume`, `--session <id>` | Resume a saved interactive session.                                                       |
+| `--cols <n> --rows <n>`      | Fixed geometry for `dump` and `vision`.                                                   |
+| `--png <path>`               | Export a Vision canvas as a real PNG.                                                     |
+| `--mono`, `--no-color`       | Strip colour.                                                                             |
+| `--no-alt`, `--no-sync`      | Disable alternate screen / synchronized output.                                           |
+
+Unknown options, incomplete values, incompatible flags, invalid Vision modes, and stray positional
+arguments fail before work with a short help hint.
 
 Headless runs are deny-by-default: without `--yes`, the edit is reported as denied and the file is
-not changed. Their exit code is non-zero when the result has an error, a failure, or failed, timed-out
+not changed. Headless test execution also requires `--allow-tests` for the first exact plan; stored
+interactive trust is not sufficient, and `--yes` applies only to edits. Their exit code is non-zero
+when the result has an error, a failure, or failed, timed-out
 or aborted verification. Interactive runs stop at the gate unless auto-approve was explicitly
 enabled. Agent runs that combine `--yes` with `--demo` are refused; copy the demo if you want to run
 an automated write against it.
 
 ## Keys
 
-| Key | Action |
-| --- | --- |
-| `1` … `6` | Empty forge, chat, patch gate, swarm, scope lens, vision. |
-| `Enter` | Send a task or apply the selected model. |
-| `Tab` | Complete a slash command. |
-| `↑` / `↓` | Prompt history; model selection in the picker. |
-| `←` / `→` | Cursor movement; lane focus on the swarm screen. |
-| `PgUp` / `PgDn` | Scroll chat, diff or test output. |
-| `m` | Open the model router. |
-| `v` / `e` | Cycle Vision mode / export the current canvas as PNG. |
-| `f` | Fold the diff or reasoning (while agent is running or at patch gate). |
-| `u` | Undo the last applied patch (when its fingerprint still matches). |
-| `y` / `a` / `n` | Apply / apply and auto-approve / deny. |
-| `[` `]` | Previous/next file in the scope lens. |
-| `j` / `k` | Previous/next scope in the scope lens. |
-| `?` / `Esc` | Help / close the current overlay. |
-| `Ctrl+C` | Abort an active run or `/test`; press again to quit when idle. |
+| Key                    | Action                                                                                 |
+| ---------------------- | -------------------------------------------------------------------------------------- |
+| `Alt+1` … `Alt+6`      | Empty forge, chat, patch gate, swarm, scope lens, vision; available during runs.       |
+| `Enter`                | Send a task or apply the selected model.                                               |
+| `Tab`                  | Complete a slash command.                                                              |
+| `↑` / `↓` or `j` / `k` | Prompt history, scope/model selection, or help scrolling.                              |
+| `←` / `→`              | Cursor movement, lane focus, scope files, or Vision mode.                              |
+| `PgUp` / `PgDn`        | Scroll chat, diff, test output, or help.                                               |
+| `Alt+m`                | Open the model router (`/model` also works).                                           |
+| `/export`              | Export the current Vision canvas as PNG.                                               |
+| `f` / `Alt+f`          | Fold at the patch gate / fold diff or reasoning while running.                         |
+| `Alt+u`                | Undo the last applied patch when its fingerprint still matches (`/undo` also works).   |
+| `Alt+o`                | Expand or collapse retained verification output; PgUp/PgDn inspect all retained lines. |
+| `y` / `a` / `n`        | Apply / apply and auto-approve / deny at the patch gate.                               |
+| `Alt+h`                | Open help (`/help` also works).                                                        |
+| `?` / `Esc`            | Close help / close the current overlay.                                                |
+| `Ctrl+C`               | Abort an active run or `/test`; press again to quit when idle.                         |
 
-Slash commands: `/help`, `/new`, `/clear`, `/test`, `/auto`, `/diff`, `/thoughts`, `/ast`, `/swarm`, `/vision`, `/model`,
-`/plan`, `/undo`, `/session`, `/doctor`, `/export`, `/quit`.
+On the main screens, printable keys always edit the prompt. Alt-modified shortcuts therefore stay
+unambiguous at normal typing speed; the patch gate, model picker and help overlay own their keys.
+Help supports arrows, `j`/`k`, paging, and Home/End so every command remains reachable at small sizes.
+
+Set `MATRIX_REDUCED_MOTION=1` to disable animation. `INK_SCREEN_READER=true` also disables animation
+and replaces every Vision canvas with a textual scope/workspace/telemetry summary.
+
+Slash commands: `/help`, `/new`, `/clear`, `/test`, `/auto`, `/diff`, `/thoughts`, `/chat`, `/ast`, `/scope`, `/swarm`,
+`/vision`, `/model`, `/plan`, `/undo`, `/session`, `/doctor`, `/export`, `/quit`.
 
 - `/new` starts a fresh session and clears metrics, prompt history, the saved patch, undo and auto-approve.
 - `/clear` clears the transcript but keeps the session and its undo history.
@@ -136,9 +153,18 @@ export OPENROUTER_API_KEY=...
 # or create ~/.matrix/credentials.json with {"openrouterApiKey":"..."}
 ```
 
-The model registry uses real OpenRouter IDs and prices. Without a key, selecting a remote model shows
-an honest warning; a headless remote run exits with an error and makes no network call. Remote tool
-calls are audited, and file writes still go through the approval gate.
+Keep the credential file private (`chmod 600 ~/.matrix/credentials.json`). Registry prices and
+capabilities are static estimates, not live provider verification. Without the required key, a
+headless OpenRouter run fails before any network request. An unknown explicit `--model` is also an
+error rather than silently selecting a different engine.
+
+Ollama uses `--model ollama` or `--model ollama/<tag>` and does not require an OpenRouter key.
+`OLLAMA_HOST` defaults to `http://127.0.0.1:11434` and applies only to Ollama models. Custom
+`MATRIX_API_BASE` uses `MATRIX_API_KEY`; `OPENAI_BASE_URL` uses `OPENAI_API_KEY`, preventing one
+provider's credential from being sent to another provider's origin.
+
+Remote tool calls are audited, and file writes still go through the approval gate. Arbitrary
+`run_command` shell execution is disabled because its side effects cannot be diffed or undone.
 
 ## Safety model
 
@@ -149,6 +175,13 @@ calls are audited, and file writes still go through the approval gate.
 - Session resume re-arms undo only when both the backup or stored original and the fingerprint are
   available and the file is unchanged.
 - A denied proposal is never stored as an applied patch.
+- Remote reads refuse known credential paths such as `.env*`, `.git` internals and private keys.
+- Test children receive a scrubbed environment without common credentials or loader hooks. Exact
+  executable/argv/script-hash trust is required before execution; start/end audits are private and
+  bounded, and retained output is redacted. This is not an OS sandbox.
+- Test output retains bounded tails with explicit truncation metadata; late summaries survive noisy runs.
+- A zero exit with unrecognized output is `unverified`, not a green verification. Recognized zero-test
+  summaries remain valid, and process success is reported separately as `processOk`.
 - Test failures are reported, not hidden and not auto-reverted.
 - `demo-project` is used on a temporary copy for tour, dump, smoke and screenshots.
 
@@ -156,30 +189,60 @@ calls are audited, and file writes still go through the approval gate.
 
 Matrix stores sessions, backups and run logs under `~/.matrix` by default:
 
-- `sessions/` — saved transcripts and last-patch metadata.
+- `sessions/` — saved transcripts and versioned `undoRun` recovery metadata.
 - `backups/` — pre-edit file bytes.
 - `runs/` — per-run event logs.
 
 Set `MATRIX_HOME` to use another directory. Session and backup files are written with private
-permissions where the platform supports it.
+permissions where the platform supports it. Small metadata sidecars make session listing independent
+of full transcript parsing; newest-first count/byte limits bound live and saved history. Run-log and
+backup pruning preserves every record referenced by offered undo. Save/list/resume warnings are
+nonfatal and visible. Resume re-arms a complete versioned `undoRun`, including multi-file edits,
+same-file coalescing, created files, and retryable partial undo. Legacy `lastPatch` sessions migrate
+conservatively when their recovery metadata is unambiguous.
 
 Remote credentials are read but never printed by doctor or the UI.
 
 ## Development
 
 ```bash
-npm test          # node:test suites, including real parser, raster, agent, CLI and Ink tests
-npm run check     # alias for npm test
-npm run smoke     # render sanity checks
-npm run bench
+npm test               # direct network-free node:test suite
+npm run check          # syntax + lint + checkJs + formatting + tests/coverage ratchets
+npm run syntax         # node --check every source/test/config module
+npm run lint           # ESLint correctness rules
+npm run typecheck      # contract-focused JSDoc/checkJs
+npm run format:check   # Prettier without modifying files
+npm run coverage       # full suite once plus critical-module ratchets
+npm run smoke          # render sanity checks
+npm run bench          # bounded local benchmark cases
+npm run pack:check     # inspect the private internal pack without creating a tarball
 ```
 
-The test suite uses temporary workspaces and a temporary `MATRIX_HOME`; it never intentionally
-patches the checked-in demo. Tests cover the real Local Forge apply/deny/undo path, resumed-session
+`npm run check` executes the full test suite only once, inside the coverage gate. `npm audit` remains a
+separate network-dependent check. The test suite uses temporary workspaces and a temporary
+`MATRIX_HOME`; it never intentionally patches the checked-in demo. Tests cover the real Local Forge apply/deny/undo path, resumed-session
 undo, remote streaming with mocked HTTP, structural parsing, PNG encoding, responsive screen
-geometry, the CLI, and failure paths including a missing remote key.
+geometry, cached transcript scrolling, idle animation, the CLI, and failure paths including a missing
+remote key. The benchmark command runs 32 bounded local cases; `--stress` opts into larger fixtures,
+and `--suite` selects a suite such as `transcript` or `parser`.
 
 See [MATRIX.md](MATRIX.md) for the architecture, event protocol, and implementation invariants.
+For the current engineering audit and phase-wise execution backlog, see
+[ENGINEERING_REVIEW.md](ENGINEERING_REVIEW.md) and [ENGINEERING_PLAN.md](ENGINEERING_PLAN.md).
+Follow-up coding agents should start with [AGENTS.md](AGENTS.md).
+
+## Internal packaging
+
+Matrix remains a **private/internal CLI** at 1.0.0. The supported consumer entry point is the `matrix`
+command; `main: src/matrix.mjs` is retained for compatibility, not declared as a supported public module
+API. The pack allowlist includes only runtime modules, the runnable demo, user/architecture docs,
+[LICENSE](LICENSE), and [CHANGELOG.md](CHANGELOG.md). Tests, benchmarks, development configuration,
+credentials, local state, and scratch artifacts are excluded.
+
+Use `npm run pack:check` for a real `npm pack --dry-run --json` inspection with lifecycle scripts disabled.
+It verifies the complete file set, private/main/bin posture, and executable CLI without publishing or
+creating a tarball. [RELEASE.md](RELEASE.md) defines the full release checklist; hosted Node 22/24 CI is
+still required and is not claimed by the local checks.
 
 ## Limitations
 

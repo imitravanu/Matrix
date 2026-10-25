@@ -8,7 +8,15 @@
 
 import React from "react";
 import { render } from "ink";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -19,35 +27,126 @@ import { resolveInside } from "../lib/workspace.mjs";
 import { parseScopes } from "../lib/scope.mjs";
 import { runLocalAgent } from "../lib/local-agent.mjs";
 import { runModelAgent } from "../lib/model-agent.mjs";
+import { classifyOutcome } from "../lib/outcome.mjs";
+import { withTestExecutionMetadata } from "../lib/process.mjs";
 import { isOpenRouterAvailable } from "../lib/openrouter.mjs";
-import { MODELS, formatCost, resolveModel } from "../lib/models.mjs";
+import { MODELS, resolveModel } from "../lib/models.mjs";
 import { createSwarmState, applySwarmEvent } from "../lib/swarm.mjs";
-import { loadLatestSession, loadSession, listSessions, matrixHome } from "../lib/session.mjs";
+import {
+  loadLatestSession,
+  loadSession,
+  listSessions,
+  matrixHome,
+  newRunId,
+} from "../lib/session.mjs";
+import { createTestPolicy, TEST_ORIGIN, withTestExecutionContext } from "../lib/test-policy.mjs";
 import { runDoctor, formatDoctor } from "../lib/doctor.mjs";
 import { halfBlockAnsi, toAscii, writePng } from "../lib/raster.mjs";
 import { buildVision } from "../lib/graph.mjs";
 import { stripAnsi } from "../lib/text.mjs";
 import { enterAltScreen, exitAltScreen, isAltScreenSupported } from "../lib/alt-screen.mjs";
 import { createSynchronizedStdout, isSyncSupported } from "../lib/sync-stream.mjs";
-import { MatrixApp, SCREENS } from "../src/matrix.mjs";
-import { checkFrame, maxLineWidth, renderAt, renderScreen, renderAllScreens, visible } from "../src/render.mjs";
+import { MatrixApp } from "../src/matrix.mjs";
+import { ALL_VIEWS, DEFAULT_SCOPE_EXTENSIONS } from "../src/views.mjs";
+import { checkFrame, renderScreen } from "../src/render.mjs";
 
 const h = React.createElement;
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEMO_ROOT = join(PACKAGE_ROOT, "demo-project");
-const SOURCE_EXTENSIONS = new Set([
-  ".py", ".pyi", ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".mts", ".cts", ".rs", ".go", ".rb",
+const SOURCE_EXTENSIONS = DEFAULT_SCOPE_EXTENSIONS;
+const CLI_HELP_TEXT = HELP_TEXT.replace(
+  "      --yes                   auto-approve edits (careful)",
+  "      --yes                   auto-approve edits only; does not trust tests\n      --allow-tests           trust one exact test plan; required for headless tests",
+).replace(
+  "  matrix bench                rendering/layout benchmark\n      --iterations <n>        frames per screen for bench",
+  "  matrix bench                local smoke benchmarks (no provider network)\n      --iterations <n>        samples per case (bounded per profile/case)\n      --stress                opt into larger bounded stress fixtures\n      --suite <names>         comma-separated suites or all",
+);
+
+const VALUE_OPTION_NAMES = new Set([
+  "--model",
+  "-m",
+  "--cwd",
+  "-C",
+  "--cols",
+  "--rows",
+  "--screen",
+  "--mode",
+  "--file",
+  "--png",
+  "--out",
+  "--session",
+  "--iterations",
+  "--bench-iterations",
+  "--suite",
 ]);
+
+function extractTestTrustFlag(argv) {
+  let allowTests = false;
+  let afterDoubleDash = false;
+  const args = [];
+  for (let index = 0; index < argv.length; index++) {
+    const arg = argv[index];
+    if (!afterDoubleDash && arg === "--") afterDoubleDash = true;
+    if (!afterDoubleDash && VALUE_OPTION_NAMES.has(arg) && index + 1 < argv.length) {
+      // Do not steal a would-be value: parseArgv must continue to reject
+      // `--model --allow-tests` as a missing model rather than a new flag.
+      args.push(arg, argv[++index]);
+      continue;
+    }
+    if (!afterDoubleDash && arg === "--allow-tests") {
+      allowTests = true;
+      continue;
+    }
+    args.push(arg);
+  }
+  return { args, allowTests };
+}
+
+function extractBenchmarkFlags(argv) {
+  let stress = false;
+  let suite = null;
+  let afterDoubleDash = false;
+  const args = [];
+  for (let index = 0; index < argv.length; index++) {
+    const arg = argv[index];
+    if (!afterDoubleDash && arg === "--") afterDoubleDash = true;
+    if (!afterDoubleDash && arg === "--stress") {
+      stress = true;
+      continue;
+    }
+    if (!afterDoubleDash && arg.startsWith("--stress=")) {
+      throw new Error("--stress does not take a value");
+    }
+    if (!afterDoubleDash && (arg === "--suite" || arg.startsWith("--suite="))) {
+      const inline = arg.startsWith("--suite=");
+      const value = inline ? arg.slice("--suite=".length) : argv[++index];
+      if (!value || (!inline && VALUE_OPTION_NAMES.has(value)) || value.startsWith("-")) {
+        throw new Error("--suite expects a comma-separated suite name");
+      }
+      suite = value;
+      continue;
+    }
+    if (!afterDoubleDash && VALUE_OPTION_NAMES.has(arg) && index + 1 < argv.length) {
+      // Preserve another option's would-be value so parseArgv remains the
+      // authority on missing values and flag-as-value errors.
+      args.push(arg, argv[++index]);
+      continue;
+    }
+    args.push(arg);
+  }
+  return { args, stress, suite };
+}
 
 function pkg() {
   return JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf8"));
 }
 
 function resolveCwd(options) {
-  const raw = options.demo ? DEMO_ROOT : options.cwd ?? process.cwd();
+  const raw = options.demo ? DEMO_ROOT : (options.cwd ?? process.cwd());
   const cwd = isAbsolute(raw) ? raw : resolve(process.cwd(), raw);
   if (!existsSync(cwd)) throw new Error(`workspace not found: ${cwd}`);
-  if (options.demo && !existsSync(DEMO_ROOT)) throw new Error("demo-project is missing from the package");
+  if (options.demo && !existsSync(DEMO_ROOT))
+    throw new Error("demo-project is missing from the package");
   return cwd;
 }
 
@@ -66,7 +165,7 @@ function sourceData(project, file) {
   return {
     file: resolved.rel,
     source: readable.content,
-    parsed: parseScopes(readable.content, resolved.rel),
+    parsed: parseScopes(readable.content, resolved.rel, { truncated: Boolean(readable.truncated) }),
   };
 }
 
@@ -79,7 +178,10 @@ function sizeFrom(options, fallback = { columns: 100, rows: 30 }) {
 
 function clampSize(options, fallback) {
   const size = sizeFrom(options, fallback);
-  return { columns: Math.max(40, Math.min(200, size.columns)), rows: Math.max(14, Math.min(80, size.rows)) };
+  return {
+    columns: Math.max(40, Math.min(200, size.columns)),
+    rows: Math.max(14, Math.min(80, size.rows)),
+  };
 }
 
 function paint(text, code) {
@@ -93,10 +195,10 @@ function section(title, body) {
 }
 
 function maybeStrip(text, options) {
-  return options.mono ? stripAnsi(text) : text;
+  return options.mono || "NO_COLOR" in process.env ? stripAnsi(text) : text;
 }
 
-async function captureDemoRun(options = {}) {
+async function captureDemoRun(_options = {}) {
   if (!existsSync(DEMO_ROOT)) throw new Error("demo-project is missing");
   const temp = mkdtempSync(join(tmpdir(), "matrix-tour-"));
   const workspace = join(temp, "demo-project");
@@ -104,25 +206,43 @@ async function captureDemoRun(options = {}) {
   const previousHome = process.env.MATRIX_HOME;
   process.env.MATRIX_HOME = home;
   try {
-    cpSync(DEMO_ROOT, workspace, { recursive: true, force: true, filter: (src) => !src.includes("__pycache__") && !src.includes(".pytest_cache") });
+    cpSync(DEMO_ROOT, workspace, {
+      recursive: true,
+      force: true,
+      filter: (src) => !src.includes("__pycache__") && !src.includes(".pytest_cache"),
+    });
     const project = detectProject(workspace);
     const task = "Fix the off-by-one in the bounds slice in src/processor.py";
     let proposal = null;
     let swarmState = createSwarmState({ task, project });
     const events = [];
-    const result = await runLocalAgent({
-      task,
-      project,
-      autoApprove: false,
-      requestApproval: async (next) => {
-        proposal = next;
-        return "y";
+    const runId = newRunId();
+    // Tour/dump/smoke explicitly execute Matrix's bundled, read-only demo
+    // source on a private temp copy. Scope this one-time test trust decision to
+    // that exact copy and plan; it never persists or weakens the edit gate.
+    const policy = createTestPolicy({ home, headless: true, allowTests: true });
+    const result = await withTestExecutionContext(
+      {
+        home,
+        runId,
+        origin: TEST_ORIGIN.MODEL,
+        policy,
       },
-      onEvent: (event) => {
-        events.push(event);
-        swarmState = applySwarmEvent(swarmState, event);
-      },
-    });
+      () =>
+        runLocalAgent({
+          task,
+          project,
+          autoApprove: false,
+          requestApproval: async (next) => {
+            proposal = next;
+            return "y";
+          },
+          onEvent: (event) => {
+            events.push(event);
+            swarmState = applySwarmEvent(swarmState, event);
+          },
+        }),
+    );
     const edited = result.editFile?.path ?? proposal?.file ?? firstSource(project);
     const scope = sourceData(project, edited);
     const history = [
@@ -208,7 +328,7 @@ function renderCaptureScreen(screen, capture, options) {
       modelName: props.modelName,
       chatScroll: screen === "chat" ? 999 : 0,
     },
-    props.size
+    props.size,
   );
   return maybeStrip(ansi, options);
 }
@@ -228,14 +348,16 @@ async function commandTour(options) {
       section(`MATRIX TOUR · ${screen.toUpperCase()}`, note);
       process.stdout.write(renderCaptureScreen(screen, capture, options));
     }
-    process.stdout.write(`\n${paint("Tour complete.", "38;2;0;255;65")} The temp workspace was removed.\n`);
+    process.stdout.write(
+      `\n${paint("Tour complete.", "38;2;0;255;65")} The temp workspace was removed.\n`,
+    );
   } finally {
     capture.cleanup();
   }
 }
 
 async function commandDump(options) {
-  const choices = [...SCREENS, "model", "help"];
+  const choices = ALL_VIEWS;
   if (options.screen && !choices.includes(options.screen)) {
     throw new Error(`--screen expects one of: ${choices.join(", ")}`);
   }
@@ -260,7 +382,11 @@ function smokeData(cwd) {
     model: MODELS[0],
     tokenStats: { inputTokens: 1234, outputTokens: 456, cachedTokens: 0, cost: 0.0012 },
     chatHistory: [
-      { id: "smoke-user", role: "user", content: "Inspect the workspace and propose one grounded change." },
+      {
+        id: "smoke-user",
+        role: "user",
+        content: "Inspect the workspace and propose one grounded change.",
+      },
       {
         id: "smoke-system",
         role: "system",
@@ -293,53 +419,47 @@ function commandSmoke(options) {
   ];
   const report = [];
   for (const size of sizes) {
-    for (const screen of [...SCREENS, "model", "help"]) {
+    for (const screen of ALL_VIEWS) {
       const ansi = renderScreen(screen, data, size);
       const check = checkFrame(ansi, size);
       report.push({ screen, ...size, ...check });
-      if (!check.ok) throw new Error(`${screen} at ${size.columns}×${size.rows}: ${check.problems.join(", ")}`);
+      if (!check.ok)
+        throw new Error(`${screen} at ${size.columns}×${size.rows}: ${check.problems.join(", ")}`);
     }
   }
   if (options.json) {
-    process.stdout.write(`${JSON.stringify({ ok: true, checks: report.length, sizes, report }, null, 2)}\n`);
+    process.stdout.write(
+      `${JSON.stringify({ ok: true, checks: report.length, sizes, report }, null, 2)}\n`,
+    );
     return;
   }
   process.stdout.write(`MATRIX SMOKE\n`);
-  process.stdout.write(`  ${report.length} frame checks across ${sizes.length} geometries · all passed\n`);
+  process.stdout.write(
+    `  ${report.length} frame checks across ${sizes.length} geometries · all passed\n`,
+  );
   for (const size of sizes) {
     const rows = report.filter((item) => item.columns === size.columns && item.rows === size.rows);
     const max = Math.max(...rows.map((item) => item.width));
-    process.stdout.write(`  ${String(size.columns).padStart(3)}×${String(size.rows).padStart(2)}  ${String(max).padStart(3)} max cols  ${rows.length} screens\n`);
+    process.stdout.write(
+      `  ${String(size.columns).padStart(3)}×${String(size.rows).padStart(2)}  ${String(max).padStart(3)} max cols  ${rows.length} screens\n`,
+    );
   }
 }
 
-function commandBench(options) {
-  const cwd = resolveCwd(options);
-  const data = smokeData(cwd);
+async function commandBench(options) {
   const size = clampSize(options, { columns: 120, rows: 36 });
-  const iterations = Math.max(1, Math.min(100, Number(options.benchIterations ?? 20)));
-  const results = [];
-  for (const screen of [...SCREENS, "model", "help"]) {
-    const start = process.hrtime.bigint();
-    let bytes = 0;
-    for (let i = 0; i < iterations; i++) {
-      const ansi = renderScreen(screen, data, size);
-      bytes += ansi.length;
-    }
-    const elapsed = Number(process.hrtime.bigint() - start) / 1e6;
-    results.push({ screen, iterations, totalMs: elapsed, perFrameMs: elapsed / iterations, bytesPerFrame: Math.round(bytes / iterations) });
-  }
-  if (options.json) {
-    process.stdout.write(`${JSON.stringify({ size, results }, null, 2)}\n`);
-    return;
-  }
-  process.stdout.write(`MATRIX BENCH · ${size.columns}×${size.rows} · ${iterations} frames/screen\n`);
-  process.stdout.write(`  screen       per frame   bytes\n`);
-  for (const row of results) {
-    process.stdout.write(`  ${row.screen.padEnd(12)} ${row.perFrameMs.toFixed(2).padStart(8)}ms  ${String(row.bytesPerFrame).padStart(6)}\n`);
-  }
-  const total = results.reduce((sum, row) => sum + row.perFrameMs, 0);
-  process.stdout.write(`  total        ${total.toFixed(2).padStart(8)}ms for one full sweep\n`);
+  // Keep the ordinary CLI free of benchmark-only Ink test streams and fixture
+  // code. Benchmarks never use the resolved workspace or a provider.
+  const { runBenchmarks, formatBenchmarkText } = await import("../bench/run.mjs");
+  const report = await runBenchmarks({
+    mode: options.benchStress ? "stress" : "smoke",
+    iterations: options.benchIterations,
+    suites: options.benchSuite,
+    size,
+  });
+  if (options.json) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  else process.stdout.write(formatBenchmarkText(report));
+  if (!report.ok) process.exitCode = 1;
 }
 
 function commandVision(options) {
@@ -369,18 +489,28 @@ function commandVision(options) {
     height: canvasHeight,
   });
   if (options.exportPng) {
-    const target = isAbsolute(options.exportPng) ? options.exportPng : resolve(process.cwd(), options.exportPng);
+    const target = isAbsolute(options.exportPng)
+      ? options.exportPng
+      : resolve(process.cwd(), options.exportPng);
     mkdirSync(dirname(target), { recursive: true });
     const written = writePng(graph.canvas, target);
     process.stdout.write(`${JSON.stringify(written, null, 2)}\n`);
     return;
   }
-  process.stdout.write(`${options.mono ? toAscii(graph.canvas, { width: canvasWidth }) : halfBlockAnsi(graph.canvas)}\n`);
-  process.stdout.write(`${paint(`${graph.title ?? "VISION"} · ${data.file} · ${data.parsed.language}`, "38;2;132;169;140")}\n`);
+  const monochrome = options.mono || "NO_COLOR" in process.env;
+  process.stdout.write(
+    `${monochrome ? toAscii(graph.canvas, { width: canvasWidth }) : halfBlockAnsi(graph.canvas)}\n`,
+  );
+  process.stdout.write(
+    `${paint(`${graph.title ?? "VISION"} · ${data.file} · ${data.parsed.language}`, "38;2;132;169;140")}\n`,
+  );
 }
 
 function commandSessions(options) {
-  const sessions = listSessions({ home: matrixHome() });
+  const sessions = listSessions({
+    home: matrixHome(),
+    onWarning: (warning) => process.stderr.write(`matrix: session warning: ${warning.message}\n`),
+  });
   if (options.json) {
     process.stdout.write(`${JSON.stringify(sessions, null, 2)}\n`);
     return;
@@ -393,7 +523,7 @@ function commandSessions(options) {
   for (const session of sessions.slice(0, 40)) {
     const when = new Date(session.savedAt).toISOString().replace("T", " ").slice(0, 19);
     process.stdout.write(
-      `  ${String(session.id).padEnd(20)} ${when}  ${String(session.modelId ?? "local").padEnd(8)} ${String(session.messages).padStart(3)} msgs  ${session.cwd ?? ""}\n`
+      `  ${String(session.id).padEnd(20)} ${when}  ${String(session.modelId ?? "local").padEnd(8)} ${String(session.messages).padStart(3)} msgs  ${session.cwd ?? ""}\n`,
     );
   }
 }
@@ -402,34 +532,39 @@ function commandDoctor(options) {
   const cwd = resolveCwd(options);
   const report = runDoctor({ cwd, stdout: process.stdout });
   if (options.json) {
-    process.stdout.write(`${JSON.stringify({ summary: report.summary, checks: report.checks }, null, 2)}\n`);
+    process.stdout.write(
+      `${JSON.stringify({ summary: report.summary, checks: report.checks }, null, 2)}\n`,
+    );
   } else {
-    process.stdout.write(`${formatDoctor(report, { color: !options.mono && process.stdout.isTTY })}\n`);
+    process.stdout.write(
+      `${formatDoctor(report, { color: !options.mono && process.stdout.isTTY })}\n`,
+    );
   }
   if (report.summary.fail > 0) process.exitCode = 1;
 }
 
-function verificationFailed(result) {
-  const verify = result.verifyTests;
-  if (!verify || verify.skipped) return false;
-  return verify.ok === false || verify.timedOut === true || verify.aborted === true || Number(verify.failed) > 0;
-}
-
-function resultOk(result) {
-  return !result.error && !result.failure && !verificationFailed(result);
-}
-
 function publicResult(result) {
+  const outcome = classifyOutcome(result);
   return {
-    ok: resultOk(result),
+    ok: outcome.ok,
+    status: outcome.status,
+    outcome: outcome.status,
     error: result.error ?? null,
-    failure: result.failure ?? null,
+    failure: outcome.failure,
+    aborted: outcome.aborted,
+    timedOut: outcome.timedOut,
+    budgetExhausted: outcome.budgetExhausted,
     summary: result.summary,
     content: result.content,
     modelName: result.modelName,
     usage: result.usage ?? null,
-    cost: result.cost ?? 0,
-    elapsedMs: result.elapsedMs ?? null,
+    cost: result.cost ?? null,
+    usageProvenance: result.usageProvenance ?? result.usage?.provenance ?? "unavailable",
+    costProvenance: result.costProvenance ?? result.usage?.costProvenance ?? "unavailable",
+    costComplete: result.costComplete ?? result.usage?.costComplete ?? false,
+    recovery: result.recovery ?? null,
+    elapsedMs: result.elapsedMs ?? result.metrics?.elapsedMs ?? null,
+    metrics: result.metrics ?? {},
     plan: result.plan ?? [],
     editFile: result.editFile
       ? {
@@ -449,9 +584,21 @@ function publicResult(result) {
           skipped: result.verifyTests.skipped,
           duration: result.verifyTests.duration,
           ok: result.verifyTests.ok,
+          processOk: result.verifyTests.processOk ?? result.verifyTests.ok,
+          verified: result.verifyTests.verified ?? result.verifyTests.ok,
+          verificationStatus:
+            result.verifyTests.verificationStatus ??
+            (result.verifyTests.ok ? "verified" : "failed"),
           timedOut: result.verifyTests.timedOut ?? false,
           aborted: result.verifyTests.aborted ?? false,
           parseConfident: result.verifyTests.parseConfident ?? null,
+          trustDenied: result.verifyTests.trustDenied ?? false,
+          trustStatus: result.verifyTests.trustStatus ?? null,
+          trustReason: result.verifyTests.trustReason ?? null,
+          auditStatus: result.verifyTests.auditStatus ?? null,
+          auditError: result.verifyTests.auditError ?? null,
+          executionOrigin: result.verifyTests.executionOrigin ?? null,
+          testPlan: result.verifyTests.testPlan ?? null,
         }
       : null,
   };
@@ -459,43 +606,84 @@ function publicResult(result) {
 
 async function runHeadlessTask(options, cwd) {
   const project = detectProject(cwd);
-  const model = resolveModel(options.offline ? "local" : options.modelQuery ?? "local");
-  if (model.remote && !isOpenRouterAvailable()) {
-    throw new Error(`${model.name} needs an OpenRouter key; use Local Forge or set OPENROUTER_API_KEY`);
+  const query = options.offline ? "local" : (options.modelQuery ?? "local");
+  const model = resolveModel(query, { fallback: false });
+  if (!model) throw new Error(`unknown model "${query}"; use --help to list supported aliases`);
+  if (model.remote && !isOpenRouterAvailable(model.id)) {
+    throw new Error(
+      `${model.name} needs an OpenRouter key; use Local Forge or set OPENROUTER_API_KEY`,
+    );
   }
-  const events = [];
+  let lastVerification = null;
   const common = {
     task: options.task,
     project,
-    onEvent: (event) => events.push(event),
     autoApprove: Boolean(options.autoApprove),
     requestApproval: async () => (options.autoApprove ? "y" : "n"),
+    onEvent: (event) => {
+      if (event.type === "verify:end") lastVerification = event.result ?? null;
+    },
   };
-  const result = model.remote
-    ? await runModelAgent({ ...common, model })
-    : await runLocalAgent(common);
+  const home = matrixHome();
+  const runId = newRunId();
+  // Edit approval and repository-test trust are independent decisions. In
+  // headless mode even previously stored interactive trust is insufficient
+  // unless an embedding caller explicitly opts into it; --allow-tests is exact-
+  // plan and invocation-scoped.
+  const policy = createTestPolicy({
+    home,
+    headless: true,
+    allowTests: Boolean(options.allowTests),
+  });
+  const agentResult = await withTestExecutionContext(
+    {
+      home,
+      runId,
+      origin: TEST_ORIGIN.MODEL,
+      policy,
+    },
+    () => (model.remote ? runModelAgent({ ...common, model }) : runLocalAgent(common)),
+  );
+  const result = withTestExecutionMetadata(agentResult, lastVerification);
   const publicRun = publicResult(result);
   if (options.json) {
-    process.stdout.write(`${JSON.stringify({ project: { name: project.name, root: project.root, branch: project.branch }, model: model.id, result: publicRun }, null, 2)}\n`);
+    process.stdout.write(
+      `${JSON.stringify({ project: { name: project.name, root: project.root, branch: project.branch }, model: model.id, result: publicRun }, null, 2)}\n`,
+    );
   } else {
-    process.stdout.write(`${paint(`MATRIX · ${model.name} · ${project.name}`, "1;38;2;0;255;65")}\n`);
+    process.stdout.write(
+      `${paint(`MATRIX · ${model.name} · ${project.name}`, "1;38;2;0;255;65")}\n`,
+    );
     process.stdout.write(`${paint("TASK", "38;2;132;169;140")} ${options.task}\n`);
     if (result.plan?.length) {
       for (const step of result.plan) {
-        process.stdout.write(`  ${step.status === "done" ? "✓" : step.status === "skipped" ? "-" : "·"} ${step.title}\n`);
+        process.stdout.write(
+          `  ${step.status === "done" ? "✓" : step.status === "skipped" ? "-" : "·"} ${step.title}\n`,
+        );
       }
     }
     if (result.content) process.stdout.write(`\n${result.content.trim()}\n`);
     if (result.editFile) {
       const stats = result.editFile.stats ?? { adds: 0, dels: 0 };
-      process.stdout.write(`\n${paint("EDIT", "38;2;132;169;140")} ${result.editFile.path} (+${stats.adds} −${stats.dels}) · ${result.editFile.status}\n`);
-      if (result.editFile.backupPath) process.stdout.write(`  backup ${result.editFile.backupPath}\n`);
+      process.stdout.write(
+        `\n${paint("EDIT", "38;2;132;169;140")} ${result.editFile.path} (+${stats.adds} −${stats.dels}) · ${result.editFile.status}\n`,
+      );
+      if (result.editFile.backupPath)
+        process.stdout.write(`  backup ${result.editFile.backupPath}\n`);
     }
     if (result.verifyTests) {
       const verify = result.verifyTests;
-      process.stdout.write(`\n${paint("VERIFY", "38;2;132;169;140")} ${verify.cmd ?? verify.command ?? "tests"} · ${verify.summary ?? ""}\n`);
+      process.stdout.write(
+        `\n${paint("VERIFY", "38;2;132;169;140")} ${verify.cmd ?? verify.command ?? "tests"} · ${verify.summary ?? ""}\n`,
+      );
+      if (verify.testPlan) {
+        process.stdout.write(`  executable/argv ${verify.testPlan.command}\n`);
+        if (verify.testPlan.script) process.stdout.write(`  script ${verify.testPlan.script}\n`);
+      }
     }
-    process.stdout.write(`\n${publicRun.ok ? "✓ complete" : "✗ failed"} · ${result.summary ?? ""}\n`);
+    process.stdout.write(
+      `\n${publicRun.ok ? "✓ complete" : `✗ ${publicRun.status}`} · ${result.summary ?? ""}\n`,
+    );
   }
   process.exitCode = publicRun.ok ? 0 : 1;
 }
@@ -506,14 +694,33 @@ async function commandInteractive(options, cwd) {
   }
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     if (options.task) return runHeadlessTask(options, cwd);
-    throw new Error("interactive Matrix needs a TTY; pass a task for headless mode or use matrix dump/vision");
+    throw new Error(
+      "interactive Matrix needs a TTY; pass a task for headless mode or use matrix dump/vision",
+    );
+  }
+  if (options.modelQuery && !options.offline) {
+    const selected = resolveModel(options.modelQuery, { fallback: false });
+    if (!selected)
+      throw new Error(
+        `unknown model "${options.modelQuery}"; use --help to list supported aliases`,
+      );
   }
   const session = options.sessionId
-    ? loadSession(options.sessionId, { home: matrixHome(), cwd })
+    ? loadSession(options.sessionId, {
+        home: matrixHome(),
+        cwd,
+        onWarning: (warning) =>
+          process.stderr.write(`matrix: session warning: ${warning.message}\n`),
+      })
     : options.resume
-    ? loadLatestSession(cwd, { home: matrixHome() })
-    : null;
-  if ((options.sessionId || options.resume) && !session) throw new Error("no matching saved session for this workspace");
+      ? loadLatestSession(cwd, {
+          home: matrixHome(),
+          onWarning: (warning) =>
+            process.stderr.write(`matrix: session warning: ${warning.message}\n`),
+        })
+      : null;
+  if ((options.sessionId || options.resume) && !session)
+    throw new Error("no matching saved session for this workspace");
   if (options.cols) process.env.MATRIX_COLS = String(options.cols);
   if (options.rows) process.env.MATRIX_ROWS = String(options.rows);
   if (options.mono) process.env.NO_COLOR = "1";
@@ -524,35 +731,50 @@ async function commandInteractive(options, cwd) {
     options.noSync || !isSyncSupported()
       ? process.stdout
       : createSynchronizedStdout(process.stdout, { syncSupported: true });
-  try {
-    const app = render(
-      h(MatrixApp, {
-        cwd,
-        initialTask: options.task,
-        initialModel: options.modelQuery,
-        initialSession: session,
-        autoApprove: Boolean(options.autoApprove),
-        offline: Boolean(options.offline),
-      }),
-      {
-        stdout,
-        stdin: process.stdin,
-        exitOnCtrlC: false,
-        patchConsole: false,
-      }
-    );
-    await app.waitUntilExit();
-  } finally {
-    if (alt) exitAltScreen(process.stdout);
-  }
+  const home = matrixHome();
+  const policy = createTestPolicy({ home, allowTests: Boolean(options.allowTests) });
+  await withTestExecutionContext({ home, policy, origin: TEST_ORIGIN.USER }, async () => {
+    try {
+      const app = render(
+        h(MatrixApp, {
+          cwd,
+          initialTask: options.task,
+          initialModel: options.modelQuery,
+          initialSession: session,
+          autoApprove: Boolean(options.autoApprove),
+          offline: Boolean(options.offline),
+        }),
+        {
+          stdout,
+          stdin: process.stdin,
+          exitOnCtrlC: false,
+          patchConsole: false,
+        },
+      );
+      await app.waitUntilExit();
+    } finally {
+      if (alt) exitAltScreen(process.stdout);
+    }
+  });
 }
 
 export async function main(argv = process.argv.slice(2)) {
   let options;
   try {
-    options = parseArgv(argv, { cwd: process.cwd() });
+    const extracted = extractTestTrustFlag(argv);
+    const benchmark = extractBenchmarkFlags(extracted.args);
+    options = parseArgv(benchmark.args, { cwd: process.cwd() });
+    if (extracted.allowTests && options.command !== "interactive") {
+      throw new Error("--allow-tests is only valid with an interactive or headless task");
+    }
+    if ((benchmark.stress || benchmark.suite !== null) && options.command !== "bench") {
+      throw new Error("--stress and --suite are only valid with matrix bench");
+    }
+    options.allowTests = extracted.allowTests;
+    options.benchStress = benchmark.stress;
+    options.benchSuite = benchmark.suite;
   } catch (error) {
-    process.stderr.write(`matrix: ${error.message}\n`);
+    process.stderr.write(`matrix: ${error.message}\nTry 'matrix --help' for usage.\n`);
     process.exitCode = 1;
     return;
   }
@@ -565,11 +787,11 @@ export async function main(argv = process.argv.slice(2)) {
     return;
   }
   if (options.help) {
-    process.stdout.write(`${HELP_TEXT}\n`);
+    process.stdout.write(`${CLI_HELP_TEXT}\n`);
     return;
   }
   if (options.command === "help") {
-    process.stdout.write(`${HELP_TEXT}\n`);
+    process.stdout.write(`${CLI_HELP_TEXT}\n`);
     return;
   }
   if (options.command === "version") {
@@ -579,17 +801,18 @@ export async function main(argv = process.argv.slice(2)) {
 
   try {
     const cwd = resolveCwd(options);
-    if (options.exportPng && options.command !== "vision") throw new Error("--png is only valid with matrix vision");
+    if (options.exportPng && options.command !== "vision")
+      throw new Error("--png is only valid with matrix vision");
     if (options.command === "doctor") return commandDoctor(options);
     if (options.command === "sessions") return commandSessions(options);
     if (options.command === "vision") return commandVision(options);
     if (options.command === "smoke") return commandSmoke(options);
-    if (options.command === "bench") return commandBench(options);
+    if (options.command === "bench") return await commandBench(options);
     if (options.command === "tour") return await commandTour(options);
     if (options.command === "dump") return await commandDump(options);
     return await commandInteractive(options, cwd);
   } catch (error) {
-    process.stderr.write(`matrix: ${error.message}\n`);
+    process.stderr.write(`matrix: ${error.message}\nTry 'matrix --help' for usage.\n`);
     process.exitCode = 1;
   }
 }
