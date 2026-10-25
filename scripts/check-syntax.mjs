@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const sourceDirectories = ["bin", "bench", "lib", "src", "scripts", "test"];
+const sourceDirectories = ["bin", "bench", "eval", "lib", "src", "scripts", "test"];
 
 function modulesIn(directory) {
   const modules = [];

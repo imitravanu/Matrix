@@ -58,6 +58,7 @@ non-negotiable invariants.
 | `REF-001` — split the orchestrator by responsibility                | **DONE** | Presentational, codec/result, event, keyboard, and view contracts extracted; render-only dependency boundary proven.                    |
 | `TOOL-001` — real static and coverage engineering gate              | **DONE** | Syntax, lint, JSDoc/checkJs, formatting, and 12 critical-module coverage ratchets pass clean installs on Node 22/24.                    |
 | `REL-001` — private package and release posture                     | **DONE** | ISC license, changelog, release checklist, and a 59-file dry-run pack allowlist preserve private/main/bin compatibility.                |
+| `CI-001` — hosted Node 22/24 engineering gate                       | **DONE** | Hosted run #3 passes clean install, static tests, hostile tests, pack, audit, smoke, and benchmarks on both versions.                   |
 | `DIFF-001` — multi-hunk and edit-coordinate correctness             | **DONE** | Original-coordinate multi-hunk round trips and non-finite rejection.                                                                    |
 | `DIFF-002` — lossless newline and encoding behavior                 | **DONE** | Explicit EOL/EOF metadata, mixed-EOL refusal, standard marker support, and 60 deterministic round-trip fixtures.                        |
 | `PROC-001` — process-output correctness and bounds                  | **DONE** | Stream/UTF-8/long-line/noisy-summary/latest-400/direct-UI bounds and timer cleanup tests.                                               |
@@ -70,10 +71,11 @@ non-negotiable invariants.
 | `UX-005` — keyboard, reduced-motion, and semantic UI                | **DONE** | Scrollable help at 40×20, all-eight-view geometry checks, static reduced motion, and textual Vision/screen-reader content.              |
 | `DOC-002` — executable documentation contracts                      | **DONE** | Slash/key/tool/view/recovery documentation is checked by `test/docs.test.mjs`.                                                          |
 
-**Current baseline:** 381/381 tests on local Node 24.21.0 and 22.23.4, plus 381/381 with hostile fake
-provider variables on Node 24; 32/32 responsive smoke checks; 32 benchmark cases; 99 module syntax checks;
-94.34% line / 83.48% branch / 93.92% function V8 coverage on Node 24; and zero npm-audit findings.
-`npm run check` and the 59-file `npm run pack:check` pass locally. Hosted Node 22/24 validation remains pending.
+**Current baseline:** 388/388 tests on local Node 24.21.0 and 22.23.4, plus 388/388 with hostile fake
+provider variables on Node 24; 16/16 default and 1/1 stress eval contracts; 32/32 responsive smoke checks;
+32 benchmark cases; 113 module syntax checks; 94.41% line / 83.82% branch / 93.92% function V8 coverage on
+Node 24; and zero npm-audit findings. `npm run check`, `npm run eval`, and the 59-file `npm run pack:check`
+pass locally. Hosted CI run #3 passed the core matrix on both versions; the new eval step awaits its first run.
 
 ## 3. Phase summary and execution waves
 
@@ -86,16 +88,16 @@ provider variables on Node 24; 32/32 responsive smoke checks; 32 benchmark cases
 
 ### Recommended parallel waves
 
-1. **Wave A:** `DIFF-002`, `PROV-003`, and `TEST-001` are complete. `CI-001` has a workflow with
-   normal and hostile-provider gates and awaits hosted Node 22/24 validation. Integrator owns docs.
+1. **Wave A:** `DIFF-002`, `PROV-003`, `TEST-001`, and `CI-001` are complete. Hosted run #3 passes
+   normal, hostile, static, package, smoke, and benchmark gates on Node 22 and 24.
 2. **Wave B:** `PROC-002`, `STATE-002`, `STATE-003`, `PROV-004`, and `CORE-002` are complete. Next are
    `PROV-005` and `CLI-001` result alignment, plus `SEC-001` for a separate trust owner.
 3. **Wave C:** `SEC-001`, `UX-004`, `PERF-001`, `PERF-002`, `PERF-003`, `PERF-004`, `PERF-005`, and
-   `BENCH-001` are complete. Local Node 22/24 gates pass; hosted CI remains the only open scale/CI gate.
-4. **Wave D:** `REF-001`, `TOOL-001`, `DOC-002`, and `REL-001` are complete. CI is configured for the
-   full static/test gate, package inspection, dependency audit, hostile tests, smoke, and benchmarks;
-   hosted Node 22/24 validation is still required.
-5. **Wave E:** `EVAL-001`, then `ADV-002` and `ADV-001` only after all Phase 1–3 gates pass.
+   `BENCH-001` are complete. Local and hosted Node 22/24 gates pass.
+4. **Wave D:** `REF-001`, `TOOL-001`, `DOC-002`, and `REL-001` are complete. CI passes the full
+   static/test gate, package inspection, dependency audit, hostile tests, smoke, and benchmarks.
+5. **Wave E:** `EVAL-001` has 16/16 default and 1/1 stress contracts passing locally on Node 22/24;
+   hosted eval validation is next. `ADV-002` and `ADV-001` follow the accepted baseline.
 
 Dependencies are minimum ordering, not permission to edit overlapping files concurrently.
 
@@ -365,14 +367,15 @@ hostile-provider tests pass 381/381, smoke/benchmarks pass, and `npm audit` repo
 
 ### `CI-001` — Add Node 22/24 CI with isolated credentials
 
-**Priority:** P3 · **Size:** M · **Status:** IN PROGRESS
+**Priority:** P3 · **Size:** M · **Status:** DONE
 **Owns:** CI workflow only; integrator owns manifest changes
 
 `.github/workflows/ci.yml` contains the Node 22/24 matrix, isolated homes, pytest, the complete static/test
 `npm run check` gate, hostile-provider tests, package inspection, dependency audit, smoke, benchmark smoke,
-and failure artifacts. Local Node 22.23.4
-and 24.21.0 engineering gates pass 381/381, and PNG tests compare portable RGBA scanlines rather than
-zlib-specific compressed bytes. The hosted clean-checkout matrix must still pass before `DONE`.
+and failure artifacts. Hosted run #3 passed both versions at `bb2e124`; an invalid job-level context and
+filesystem/viewport-specific fixture assumptions were fixed with regressions. Local Node 22.23.4 and
+24.21.0 engineering gates pass 388/388, and PNG tests compare portable RGBA scanlines rather than
+zlib-specific compressed bytes. The workflow now also runs `npm run eval`; its first hosted run is pending.
 
 - Run `npm ci`, Python/pytest setup, tests, smoke, syntax/static checks, and relevant stress smoke on Node 22 and 24.
 - Isolate `HOME`/`MATRIX_HOME`, use fake/no credentials, and prohibit live provider calls.
@@ -402,13 +405,14 @@ zlib-specific compressed bytes. The hosted clean-checkout matrix must still pass
 Matrix remains a private/internal CLI at 1.0.0 with unchanged `main`, `bin`, and production dependencies.
 The ISC license, changelog, and release checklist are present. `npm run pack:check` performs real dry-run
 inspection on Node 22 and 24: 59 intended runtime/demo/docs/license files, executable bin, no unexpected
-files, no tarball, and no publication. Hosted Node 22/24 CI remains an unchecked release-checklist gate.
+files, no tarball, and no publication. Hosted run #3 satisfies the current Node 22/24 CI gate; every
+future release candidate still requires a fresh pass.
 
 ## 7. Phase 4 — Frontier capability
 
 ### `EVAL-001` — Add a versioned agent evaluation system
 
-**Priority:** P3 · **Size:** L · **Status:** BLOCKED by Phase 1 and `CI-001`
+**Priority:** P3 · **Size:** L · **Status:** IN PROGRESS
 **Owns:** evaluation fixtures/runner/metrics; no production behavior changes required
 
 - Build deterministic local tasks for fix, rename, create, deny, abort, undo, noisy verification, malformed tools,
@@ -416,6 +420,13 @@ files, no tarball, and no publication. Hosted Node 22/24 CI remains an unchecked
 - Measure task success, unsafe actions, exact recovery, verification honesty, retries, latency, tokens, and estimated/provider cost.
 - Acceptance: baseline and thresholds are versioned; CI local evals are network-free; a regression blocks release;
   reports distinguish deterministic Local Forge capability from remote-model results without invented averages.
+
+The versioned runner covers 16 default cases and one opt-in stress case with sanitized evidence, strict
+reviewed baselines, exact recovery, independent retry/verification metrics, and zero safety violations.
+Default eval and baseline comparison pass locally on Node 22.23.4 and 24.21.0, including a hostile-provider
+run; stress passes on Node 24. `npm run eval`, recursive syntax, release documentation, and CI/artifact
+wiring are present. Generated reports are gitignored. Hosted execution of this new eval step remains required
+before `DONE`; no live-provider evidence is claimed.
 
 ### `ADV-002` — Design and implement an OS-sandboxed command capability
 

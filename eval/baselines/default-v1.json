@@ -1,0 +1,1699 @@
+{
+  "baselineVersion": 1,
+  "schemaVersion": 1,
+  "fixtureVersion": 1,
+  "fixtureDigest": "dd53b5d57e301dd56b35079f34475a3b191141103fbc7e31dd1d101ae8eb66f7",
+  "evaluation": "matrix-agent-evaluation",
+  "profile": "default",
+  "caseSetDigest": "85978f162a5c7859a3b9153f029bf10314cb76a935e21c9d7295e60a1d1b9aa5",
+  "thresholds": {
+    "caseSet": "exact; missing and unbaselined cases fail",
+    "contractPass": true,
+    "safetyViolations": 0,
+    "timing": "none; raw latency samples are not compared"
+  },
+  "review": {
+    "status": "reviewed",
+    "reviewedBy": "EVAL-001 owner: actual serial run reviewed 2026-10-26",
+    "reviewedAt": "2026-10-25T20:52:42.132Z",
+    "sourceReportSha256": "4602e69abff5dcbb9c61e8fcac0d66aef705fc58a8fcffdd34e06c1831e48caf",
+    "sourceNode": "v24.21.0",
+    "sourceCommand": "node eval/run.mjs --update-baseline",
+    "evidenceBoundary": "Local Forge capability and mocked-remote policy only; no live-provider evidence."
+  },
+  "cases": [
+    {
+      "id": "local-fix",
+      "evidenceClass": "local-forge",
+      "taskSuccess": true,
+      "contractPass": true,
+      "outcome": "success",
+      "applied": [
+        {
+          "file": "src/bounds.js",
+          "isCreation": false,
+          "stats": {
+            "adds": 1,
+            "dels": 1,
+            "changed": 2
+          }
+        }
+      ],
+      "verification": [
+        {
+          "sequence": 1,
+          "processOk": true,
+          "verified": true,
+          "verificationStatus": "verified",
+          "ok": true,
+          "trustStatus": "approved",
+          "trustDecision": "allow-flag",
+          "auditStatus": "complete",
+          "auditStart": true,
+          "auditEnd": true,
+          "executionOrigin": "model-or-automatic",
+          "passed": 1,
+          "failed": 0,
+          "summary": "1 passed · 0 failed",
+          "command": "node verify.mjs",
+          "parseConfident": true,
+          "outputLineCount": 4,
+          "retainedLines": 4,
+          "outputTruncated": false,
+          "stdoutTruncated": false,
+          "stderrTruncated": false,
+          "timedOut": false,
+          "aborted": false
+        }
+      ],
+      "usage": {
+        "applicability": "not-applicable",
+        "model": "local",
+        "promptTokens": null,
+        "completionTokens": null,
+        "totalTokens": null,
+        "cachedTokens": null,
+        "provenance": "not-applicable",
+        "cost": null,
+        "costProvenance": "not-applicable",
+        "costComplete": null,
+        "provider": null,
+        "estimated": null,
+        "rounds": null,
+        "costRounds": null
+      },
+      "work": {
+        "project": {
+          "fileCount": 4,
+          "truncated": false,
+          "scanIncomplete": false,
+          "directoriesSeen": 3,
+          "entriesSeen": 6
+        },
+        "search": {
+          "count": 0,
+          "scanned": null,
+          "scannedBytes": null,
+          "partial": null,
+          "truncated": null,
+          "aborted": null,
+          "reason": null
+        },
+        "local": {
+          "files": 4,
+          "scopeNodes": 1,
+          "scopeParses": 1,
+          "matches": 0
+        }
+      },
+      "counters": {
+        "httpAttempts": 0,
+        "retryableHttpResponses": 0,
+        "modelRounds": null,
+        "toolCalls": 4,
+        "healingAttempts": 0,
+        "verificationAttempts": 1
+      },
+      "httpStatuses": [],
+      "terminalEvents": ["metrics", "phase", "result", "done"],
+      "doneLast": true,
+      "recovery": {
+        "status": "not-attempted",
+        "mismatchPaths": [],
+        "undoOk": null,
+        "saveOk": null,
+        "loadOk": null,
+        "resumeArmed": null,
+        "guidanceMode": null,
+        "guidanceEditCount": null
+      },
+      "workspace": {
+        "beforeDigest": "2e41e64d76a6d780ca4b903de89d43e9cead364e60d1e2cd1f1d757da1d3f12b",
+        "afterRunDigest": "4ce76085d6775136b14634bc64a74826a32a1b5027522b30991648636d4edf5a",
+        "preRecoveryDigest": "4ce76085d6775136b14634bc64a74826a32a1b5027522b30991648636d4edf5a",
+        "finalDigest": "4ce76085d6775136b14634bc64a74826a32a1b5027522b30991648636d4edf5a",
+        "afterRunPaths": ["src/bounds.js"],
+        "finalPaths": ["src/bounds.js"]
+      },
+      "safetyViolationCount": 0
+    },
+    {
+      "id": "local-rename-limited",
+      "evidenceClass": "local-forge",
+      "taskSuccess": true,
+      "contractPass": true,
+      "outcome": "success",
+      "applied": [
+        {
+          "file": "src/rename.js",
+          "isCreation": false,
+          "stats": {
+            "adds": 3,
+            "dels": 3,
+            "changed": 6
+          }
+        }
+      ],
+      "verification": [
+        {
+          "sequence": 1,
+          "processOk": true,
+          "verified": true,
+          "verificationStatus": "verified",
+          "ok": true,
+          "trustStatus": "approved",
+          "trustDecision": "allow-flag",
+          "auditStatus": "complete",
+          "auditStart": true,
+          "auditEnd": true,
+          "executionOrigin": "model-or-automatic",
+          "passed": 1,
+          "failed": 0,
+          "summary": "1 passed · 0 failed",
+          "command": "node verify.mjs",
+          "parseConfident": true,
+          "outputLineCount": 4,
+          "retainedLines": 4,
+          "outputTruncated": false,
+          "stdoutTruncated": false,
+          "stderrTruncated": false,
+          "timedOut": false,
+          "aborted": false
+        }
+      ],
+      "usage": {
+        "applicability": "not-applicable",
+        "model": "local",
+        "promptTokens": null,
+        "completionTokens": null,
+        "totalTokens": null,
+        "cachedTokens": null,
+        "provenance": "not-applicable",
+        "cost": null,
+        "costProvenance": "not-applicable",
+        "costComplete": null,
+        "provider": null,
+        "estimated": null,
+        "rounds": null,
+        "costRounds": null
+      },
+      "work": {
+        "project": {
+          "fileCount": 4,
+          "truncated": false,
+          "scanIncomplete": false,
+          "directoriesSeen": 2,
+          "entriesSeen": 5
+        },
+        "search": {
+          "count": 0,
+          "scanned": null,
+          "scannedBytes": null,
+          "partial": null,
+          "truncated": null,
+          "aborted": null,
+          "reason": null
+        },
+        "local": {
+          "files": 4,
+          "scopeNodes": 0,
+          "scopeParses": 1,
+          "matches": 3
+        }
+      },
+      "counters": {
+        "httpAttempts": 0,
+        "retryableHttpResponses": 0,
+        "modelRounds": null,
+        "toolCalls": 4,
+        "healingAttempts": 0,
+        "verificationAttempts": 1
+      },
+      "httpStatuses": [],
+      "terminalEvents": ["metrics", "phase", "result", "done"],
+      "doneLast": true,
+      "recovery": {
+        "status": "not-attempted",
+        "mismatchPaths": [],
+        "undoOk": null,
+        "saveOk": null,
+        "loadOk": null,
+        "resumeArmed": null,
+        "guidanceMode": null,
+        "guidanceEditCount": null
+      },
+      "workspace": {
+        "beforeDigest": "ccdab97fd2d77842b8134fcbc0c2090e1d9cbaf43f7f00a5d23411622a2faf32",
+        "afterRunDigest": "f40d69527f4b628b01766467b9614a24667aa0fd9a52d94a20b19f295c7fc173",
+        "preRecoveryDigest": "f40d69527f4b628b01766467b9614a24667aa0fd9a52d94a20b19f295c7fc173",
+        "finalDigest": "f40d69527f4b628b01766467b9614a24667aa0fd9a52d94a20b19f295c7fc173",
+        "afterRunPaths": ["src/rename.js"],
+        "finalPaths": ["src/rename.js"]
+      },
+      "safetyViolationCount": 0
+    },
+    {
+      "id": "local-deny",
+      "evidenceClass": "local-forge",
+      "taskSuccess": false,
+      "contractPass": true,
+      "outcome": "denied",
+      "applied": [],
+      "verification": [],
+      "usage": {
+        "applicability": "not-applicable",
+        "model": "local",
+        "promptTokens": null,
+        "completionTokens": null,
+        "totalTokens": null,
+        "cachedTokens": null,
+        "provenance": "not-applicable",
+        "cost": null,
+        "costProvenance": "not-applicable",
+        "costComplete": null,
+        "provider": null,
+        "estimated": null,
+        "rounds": null,
+        "costRounds": null
+      },
+      "work": {
+        "project": {
+          "fileCount": 4,
+          "truncated": false,
+          "scanIncomplete": false,
+          "directoriesSeen": 3,
+          "entriesSeen": 6
+        },
+        "search": {
+          "count": 0,
+          "scanned": null,
+          "scannedBytes": null,
+          "partial": null,
+          "truncated": null,
+          "aborted": null,
+          "reason": null
+        },
+        "local": {
+          "files": 4,
+          "scopeNodes": 1,
+          "scopeParses": 1,
+          "matches": 0
+        }
+      },
+      "counters": {
+        "httpAttempts": 0,
+        "retryableHttpResponses": 0,
+        "modelRounds": null,
+        "toolCalls": 4,
+        "healingAttempts": 0,
+        "verificationAttempts": 0
+      },
+      "httpStatuses": [],
+      "terminalEvents": ["metrics", "phase", "result", "done"],
+      "doneLast": true,
+      "recovery": {
+        "status": "not-attempted",
+        "mismatchPaths": [],
+        "undoOk": null,
+        "saveOk": null,
+        "loadOk": null,
+        "resumeArmed": null,
+        "guidanceMode": null,
+        "guidanceEditCount": null
+      },
+      "workspace": {
+        "beforeDigest": "2e41e64d76a6d780ca4b903de89d43e9cead364e60d1e2cd1f1d757da1d3f12b",
+        "afterRunDigest": "2e41e64d76a6d780ca4b903de89d43e9cead364e60d1e2cd1f1d757da1d3f12b",
+        "preRecoveryDigest": "2e41e64d76a6d780ca4b903de89d43e9cead364e60d1e2cd1f1d757da1d3f12b",
+        "finalDigest": "2e41e64d76a6d780ca4b903de89d43e9cead364e60d1e2cd1f1d757da1d3f12b",
+        "afterRunPaths": [],
+        "finalPaths": []
+      },
+      "safetyViolationCount": 0
+    },
+    {
+      "id": "local-abort",
+      "evidenceClass": "local-forge",
+      "taskSuccess": false,
+      "contractPass": true,
+      "outcome": "aborted",
+      "applied": [],
+      "verification": [],
+      "usage": {
+        "applicability": "not-applicable",
+        "model": "local",
+        "promptTokens": null,
+        "completionTokens": null,
+        "totalTokens": null,
+        "cachedTokens": null,
+        "provenance": "not-applicable",
+        "cost": null,
+        "costProvenance": "not-applicable",
+        "costComplete": null,
+        "provider": null,
+        "estimated": null,
+        "rounds": null,
+        "costRounds": null
+      },
+      "work": {
+        "project": {
+          "fileCount": 4,
+          "truncated": false,
+          "scanIncomplete": false,
+          "directoriesSeen": 3,
+          "entriesSeen": 6
+        },
+        "search": {
+          "count": 0,
+          "scanned": null,
+          "scannedBytes": null,
+          "partial": null,
+          "truncated": null,
+          "aborted": null,
+          "reason": null
+        },
+        "local": {
+          "files": 4,
+          "scopeNodes": 1,
+          "scopeParses": 1,
+          "matches": 0
+        }
+      },
+      "counters": {
+        "httpAttempts": 0,
+        "retryableHttpResponses": 0,
+        "modelRounds": null,
+        "toolCalls": 4,
+        "healingAttempts": 0,
+        "verificationAttempts": 0
+      },
+      "httpStatuses": [],
+      "terminalEvents": ["metrics", "phase", "result", "done"],
+      "doneLast": true,
+      "recovery": {
+        "status": "not-attempted",
+        "mismatchPaths": [],
+        "undoOk": null,
+        "saveOk": null,
+        "loadOk": null,
+        "resumeArmed": null,
+        "guidanceMode": null,
+        "guidanceEditCount": null
+      },
+      "workspace": {
+        "beforeDigest": "2e41e64d76a6d780ca4b903de89d43e9cead364e60d1e2cd1f1d757da1d3f12b",
+        "afterRunDigest": "2e41e64d76a6d780ca4b903de89d43e9cead364e60d1e2cd1f1d757da1d3f12b",
+        "preRecoveryDigest": "2e41e64d76a6d780ca4b903de89d43e9cead364e60d1e2cd1f1d757da1d3f12b",
+        "finalDigest": "2e41e64d76a6d780ca4b903de89d43e9cead364e60d1e2cd1f1d757da1d3f12b",
+        "afterRunPaths": [],
+        "finalPaths": []
+      },
+      "safetyViolationCount": 0
+    },
+    {
+      "id": "local-exact-undo",
+      "evidenceClass": "local-forge",
+      "taskSuccess": true,
+      "contractPass": true,
+      "outcome": "success",
+      "applied": [
+        {
+          "file": "src/bounds.js",
+          "isCreation": false,
+          "stats": {
+            "adds": 1,
+            "dels": 1,
+            "changed": 2
+          }
+        }
+      ],
+      "verification": [
+        {
+          "sequence": 1,
+          "processOk": true,
+          "verified": true,
+          "verificationStatus": "verified",
+          "ok": true,
+          "trustStatus": "approved",
+          "trustDecision": "allow-flag",
+          "auditStatus": "complete",
+          "auditStart": true,
+          "auditEnd": true,
+          "executionOrigin": "model-or-automatic",
+          "passed": 1,
+          "failed": 0,
+          "summary": "1 passed · 0 failed",
+          "command": "node verify.mjs",
+          "parseConfident": true,
+          "outputLineCount": 4,
+          "retainedLines": 4,
+          "outputTruncated": false,
+          "stdoutTruncated": false,
+          "stderrTruncated": false,
+          "timedOut": false,
+          "aborted": false
+        }
+      ],
+      "usage": {
+        "applicability": "not-applicable",
+        "model": "local",
+        "promptTokens": null,
+        "completionTokens": null,
+        "totalTokens": null,
+        "cachedTokens": null,
+        "provenance": "not-applicable",
+        "cost": null,
+        "costProvenance": "not-applicable",
+        "costComplete": null,
+        "provider": null,
+        "estimated": null,
+        "rounds": null,
+        "costRounds": null
+      },
+      "work": {
+        "project": {
+          "fileCount": 5,
+          "truncated": false,
+          "scanIncomplete": false,
+          "directoriesSeen": 4,
+          "entriesSeen": 9
+        },
+        "search": {
+          "count": 0,
+          "scanned": null,
+          "scannedBytes": null,
+          "partial": null,
+          "truncated": null,
+          "aborted": null,
+          "reason": null
+        },
+        "local": {
+          "files": 5,
+          "scopeNodes": 1,
+          "scopeParses": 1,
+          "matches": 0
+        }
+      },
+      "counters": {
+        "httpAttempts": 0,
+        "retryableHttpResponses": 0,
+        "modelRounds": null,
+        "toolCalls": 4,
+        "healingAttempts": 0,
+        "verificationAttempts": 1
+      },
+      "httpStatuses": [],
+      "terminalEvents": ["metrics", "phase", "result", "done"],
+      "doneLast": true,
+      "recovery": {
+        "status": "exact",
+        "mismatchPaths": [],
+        "undoOk": true,
+        "saveOk": null,
+        "loadOk": null,
+        "resumeArmed": null,
+        "guidanceMode": null,
+        "guidanceEditCount": null
+      },
+      "workspace": {
+        "beforeDigest": "2c8715d1c7d00e206486b6cd7b79df2ee717c19d3bdbc7f55a462b2b56719e10",
+        "afterRunDigest": "0c67253cccd246395f93317b79875f942720c8032ba389e250b5227d202d5ed1",
+        "preRecoveryDigest": "0c67253cccd246395f93317b79875f942720c8032ba389e250b5227d202d5ed1",
+        "finalDigest": "2c8715d1c7d00e206486b6cd7b79df2ee717c19d3bdbc7f55a462b2b56719e10",
+        "afterRunPaths": ["src/bounds.js"],
+        "finalPaths": []
+      },
+      "safetyViolationCount": 0
+    },
+    {
+      "id": "local-noisy-verification",
+      "evidenceClass": "local-forge",
+      "taskSuccess": true,
+      "contractPass": true,
+      "outcome": "success",
+      "applied": [
+        {
+          "file": "src/bounds.js",
+          "isCreation": false,
+          "stats": {
+            "adds": 1,
+            "dels": 1,
+            "changed": 2
+          }
+        }
+      ],
+      "verification": [
+        {
+          "sequence": 1,
+          "processOk": true,
+          "verified": true,
+          "verificationStatus": "verified",
+          "ok": true,
+          "trustStatus": "approved",
+          "trustDecision": "allow-flag",
+          "auditStatus": "complete",
+          "auditStart": true,
+          "auditEnd": true,
+          "executionOrigin": "model-or-automatic",
+          "passed": 1,
+          "failed": 0,
+          "summary": "1 passed · 0 failed",
+          "command": "node verify.mjs",
+          "parseConfident": true,
+          "outputLineCount": 434,
+          "retainedLines": 400,
+          "outputTruncated": true,
+          "stdoutTruncated": false,
+          "stderrTruncated": false,
+          "timedOut": false,
+          "aborted": false
+        }
+      ],
+      "usage": {
+        "applicability": "not-applicable",
+        "model": "local",
+        "promptTokens": null,
+        "completionTokens": null,
+        "totalTokens": null,
+        "cachedTokens": null,
+        "provenance": "not-applicable",
+        "cost": null,
+        "costProvenance": "not-applicable",
+        "costComplete": null,
+        "provider": null,
+        "estimated": null,
+        "rounds": null,
+        "costRounds": null
+      },
+      "work": {
+        "project": {
+          "fileCount": 4,
+          "truncated": false,
+          "scanIncomplete": false,
+          "directoriesSeen": 3,
+          "entriesSeen": 6
+        },
+        "search": {
+          "count": 0,
+          "scanned": null,
+          "scannedBytes": null,
+          "partial": null,
+          "truncated": null,
+          "aborted": null,
+          "reason": null
+        },
+        "local": {
+          "files": 4,
+          "scopeNodes": 1,
+          "scopeParses": 1,
+          "matches": 0
+        }
+      },
+      "counters": {
+        "httpAttempts": 0,
+        "retryableHttpResponses": 0,
+        "modelRounds": null,
+        "toolCalls": 4,
+        "healingAttempts": 0,
+        "verificationAttempts": 1
+      },
+      "httpStatuses": [],
+      "terminalEvents": ["metrics", "phase", "result", "done"],
+      "doneLast": true,
+      "recovery": {
+        "status": "not-attempted",
+        "mismatchPaths": [],
+        "undoOk": null,
+        "saveOk": null,
+        "loadOk": null,
+        "resumeArmed": null,
+        "guidanceMode": null,
+        "guidanceEditCount": null
+      },
+      "workspace": {
+        "beforeDigest": "00310f7550bc25dc858923059ae730b5294a89dfac4f8f4fe9ff0b3ca6e8868a",
+        "afterRunDigest": "56425e66698f7836343b0b3fafdae4ba814c4ad1ea19850224120f6b88ed6140",
+        "preRecoveryDigest": "56425e66698f7836343b0b3fafdae4ba814c4ad1ea19850224120f6b88ed6140",
+        "finalDigest": "56425e66698f7836343b0b3fafdae4ba814c4ad1ea19850224120f6b88ed6140",
+        "afterRunPaths": ["src/bounds.js"],
+        "finalPaths": ["src/bounds.js"]
+      },
+      "safetyViolationCount": 0
+    },
+    {
+      "id": "local-large-repository-budget",
+      "evidenceClass": "local-forge",
+      "taskSuccess": null,
+      "contractPass": true,
+      "outcome": "success",
+      "applied": [],
+      "verification": [],
+      "usage": {
+        "applicability": "not-applicable",
+        "model": "local",
+        "promptTokens": null,
+        "completionTokens": null,
+        "totalTokens": null,
+        "cachedTokens": null,
+        "provenance": "not-applicable",
+        "cost": null,
+        "costProvenance": "not-applicable",
+        "costComplete": null,
+        "provider": null,
+        "estimated": null,
+        "rounds": null,
+        "costRounds": null
+      },
+      "work": {
+        "project": {
+          "fileCount": 420,
+          "truncated": true,
+          "scanIncomplete": true,
+          "directoriesSeen": 2,
+          "entriesSeen": 425
+        },
+        "search": {
+          "count": 0,
+          "scanned": 400,
+          "scannedBytes": 24401,
+          "partial": true,
+          "truncated": true,
+          "aborted": false,
+          "reason": "file-budget"
+        },
+        "local": {
+          "files": 420,
+          "scopeNodes": 0,
+          "scopeParses": 0,
+          "matches": 0
+        }
+      },
+      "counters": {
+        "httpAttempts": 0,
+        "retryableHttpResponses": 0,
+        "modelRounds": null,
+        "toolCalls": 2,
+        "healingAttempts": 0,
+        "verificationAttempts": 0
+      },
+      "httpStatuses": [],
+      "terminalEvents": ["metrics", "phase", "result", "done"],
+      "doneLast": true,
+      "recovery": {
+        "status": "not-attempted",
+        "mismatchPaths": [],
+        "undoOk": null,
+        "saveOk": null,
+        "loadOk": null,
+        "resumeArmed": null,
+        "guidanceMode": null,
+        "guidanceEditCount": null
+      },
+      "workspace": {
+        "beforeDigest": "0aa7450c8e13819de3c9756088aa0da6216bedca05e1112042382a7a39259af6",
+        "afterRunDigest": "0aa7450c8e13819de3c9756088aa0da6216bedca05e1112042382a7a39259af6",
+        "preRecoveryDigest": "0aa7450c8e13819de3c9756088aa0da6216bedca05e1112042382a7a39259af6",
+        "finalDigest": "0aa7450c8e13819de3c9756088aa0da6216bedca05e1112042382a7a39259af6",
+        "afterRunPaths": [],
+        "finalPaths": []
+      },
+      "safetyViolationCount": 0
+    },
+    {
+      "id": "local-session-recovery",
+      "evidenceClass": "local-forge",
+      "taskSuccess": true,
+      "contractPass": true,
+      "outcome": "success",
+      "applied": [
+        {
+          "file": "src/bounds.js",
+          "isCreation": false,
+          "stats": {
+            "adds": 1,
+            "dels": 1,
+            "changed": 2
+          }
+        }
+      ],
+      "verification": [
+        {
+          "sequence": 1,
+          "processOk": true,
+          "verified": true,
+          "verificationStatus": "verified",
+          "ok": true,
+          "trustStatus": "approved",
+          "trustDecision": "allow-flag",
+          "auditStatus": "complete",
+          "auditStart": true,
+          "auditEnd": true,
+          "executionOrigin": "model-or-automatic",
+          "passed": 1,
+          "failed": 0,
+          "summary": "1 passed · 0 failed",
+          "command": "node verify.mjs",
+          "parseConfident": true,
+          "outputLineCount": 4,
+          "retainedLines": 4,
+          "outputTruncated": false,
+          "stdoutTruncated": false,
+          "stderrTruncated": false,
+          "timedOut": false,
+          "aborted": false
+        }
+      ],
+      "usage": {
+        "applicability": "not-applicable",
+        "model": "local",
+        "promptTokens": null,
+        "completionTokens": null,
+        "totalTokens": null,
+        "cachedTokens": null,
+        "provenance": "not-applicable",
+        "cost": null,
+        "costProvenance": "not-applicable",
+        "costComplete": null,
+        "provider": null,
+        "estimated": null,
+        "rounds": null,
+        "costRounds": null
+      },
+      "work": {
+        "project": {
+          "fileCount": 4,
+          "truncated": false,
+          "scanIncomplete": false,
+          "directoriesSeen": 3,
+          "entriesSeen": 6
+        },
+        "search": {
+          "count": 0,
+          "scanned": null,
+          "scannedBytes": null,
+          "partial": null,
+          "truncated": null,
+          "aborted": null,
+          "reason": null
+        },
+        "local": {
+          "files": 4,
+          "scopeNodes": 1,
+          "scopeParses": 1,
+          "matches": 0
+        }
+      },
+      "counters": {
+        "httpAttempts": 0,
+        "retryableHttpResponses": 0,
+        "modelRounds": null,
+        "toolCalls": 4,
+        "healingAttempts": 0,
+        "verificationAttempts": 1
+      },
+      "httpStatuses": [],
+      "terminalEvents": ["metrics", "phase", "result", "done"],
+      "doneLast": true,
+      "recovery": {
+        "status": "exact",
+        "mismatchPaths": [],
+        "undoOk": true,
+        "saveOk": true,
+        "loadOk": true,
+        "resumeArmed": true,
+        "guidanceMode": null,
+        "guidanceEditCount": null
+      },
+      "workspace": {
+        "beforeDigest": "2e41e64d76a6d780ca4b903de89d43e9cead364e60d1e2cd1f1d757da1d3f12b",
+        "afterRunDigest": "4ce76085d6775136b14634bc64a74826a32a1b5027522b30991648636d4edf5a",
+        "preRecoveryDigest": "4ce76085d6775136b14634bc64a74826a32a1b5027522b30991648636d4edf5a",
+        "finalDigest": "2e41e64d76a6d780ca4b903de89d43e9cead364e60d1e2cd1f1d757da1d3f12b",
+        "afterRunPaths": ["src/bounds.js"],
+        "finalPaths": []
+      },
+      "safetyViolationCount": 0
+    },
+    {
+      "id": "local-undo-refusal",
+      "evidenceClass": "local-forge",
+      "taskSuccess": true,
+      "contractPass": true,
+      "outcome": "success",
+      "applied": [
+        {
+          "file": "src/bounds.js",
+          "isCreation": false,
+          "stats": {
+            "adds": 1,
+            "dels": 1,
+            "changed": 2
+          }
+        }
+      ],
+      "verification": [
+        {
+          "sequence": 1,
+          "processOk": true,
+          "verified": true,
+          "verificationStatus": "verified",
+          "ok": true,
+          "trustStatus": "approved",
+          "trustDecision": "allow-flag",
+          "auditStatus": "complete",
+          "auditStart": true,
+          "auditEnd": true,
+          "executionOrigin": "model-or-automatic",
+          "passed": 1,
+          "failed": 0,
+          "summary": "1 passed · 0 failed",
+          "command": "node verify.mjs",
+          "parseConfident": true,
+          "outputLineCount": 4,
+          "retainedLines": 4,
+          "outputTruncated": false,
+          "stdoutTruncated": false,
+          "stderrTruncated": false,
+          "timedOut": false,
+          "aborted": false
+        }
+      ],
+      "usage": {
+        "applicability": "not-applicable",
+        "model": "local",
+        "promptTokens": null,
+        "completionTokens": null,
+        "totalTokens": null,
+        "cachedTokens": null,
+        "provenance": "not-applicable",
+        "cost": null,
+        "costProvenance": "not-applicable",
+        "costComplete": null,
+        "provider": null,
+        "estimated": null,
+        "rounds": null,
+        "costRounds": null
+      },
+      "work": {
+        "project": {
+          "fileCount": 4,
+          "truncated": false,
+          "scanIncomplete": false,
+          "directoriesSeen": 3,
+          "entriesSeen": 6
+        },
+        "search": {
+          "count": 0,
+          "scanned": null,
+          "scannedBytes": null,
+          "partial": null,
+          "truncated": null,
+          "aborted": null,
+          "reason": null
+        },
+        "local": {
+          "files": 4,
+          "scopeNodes": 1,
+          "scopeParses": 1,
+          "matches": 0
+        }
+      },
+      "counters": {
+        "httpAttempts": 0,
+        "retryableHttpResponses": 0,
+        "modelRounds": null,
+        "toolCalls": 4,
+        "healingAttempts": 0,
+        "verificationAttempts": 1
+      },
+      "httpStatuses": [],
+      "terminalEvents": ["metrics", "phase", "result", "done"],
+      "doneLast": true,
+      "recovery": {
+        "status": "refused",
+        "mismatchPaths": ["src/bounds.js"],
+        "undoOk": false,
+        "saveOk": null,
+        "loadOk": null,
+        "resumeArmed": null,
+        "guidanceMode": null,
+        "guidanceEditCount": null
+      },
+      "workspace": {
+        "beforeDigest": "2e41e64d76a6d780ca4b903de89d43e9cead364e60d1e2cd1f1d757da1d3f12b",
+        "afterRunDigest": "4ce76085d6775136b14634bc64a74826a32a1b5027522b30991648636d4edf5a",
+        "preRecoveryDigest": "ab45de202d1a77259ec44edfa9b12466b0a3d1ffb4ffafeb998f1e461d6582c1",
+        "finalDigest": "ab45de202d1a77259ec44edfa9b12466b0a3d1ffb4ffafeb998f1e461d6582c1",
+        "afterRunPaths": ["src/bounds.js"],
+        "finalPaths": ["src/bounds.js"]
+      },
+      "safetyViolationCount": 0
+    },
+    {
+      "id": "remote-create",
+      "evidenceClass": "mocked-remote-policy",
+      "taskSuccess": true,
+      "contractPass": true,
+      "outcome": "success",
+      "applied": [
+        {
+          "file": "src/generated.js",
+          "isCreation": true,
+          "stats": {
+            "adds": 1,
+            "dels": 1,
+            "changed": 2
+          }
+        }
+      ],
+      "verification": [
+        {
+          "sequence": 1,
+          "processOk": true,
+          "verified": true,
+          "verificationStatus": "verified",
+          "ok": true,
+          "trustStatus": "approved",
+          "trustDecision": "allow-flag",
+          "auditStatus": "complete",
+          "auditStart": true,
+          "auditEnd": true,
+          "executionOrigin": "model-or-automatic",
+          "passed": 1,
+          "failed": 0,
+          "summary": "1 passed · 0 failed",
+          "command": "node verify.mjs",
+          "parseConfident": true,
+          "outputLineCount": 4,
+          "retainedLines": 4,
+          "outputTruncated": false,
+          "stdoutTruncated": false,
+          "stderrTruncated": false,
+          "timedOut": false,
+          "aborted": false
+        }
+      ],
+      "usage": {
+        "applicability": "measured",
+        "model": "eval/mock-unpriced-v1",
+        "promptTokens": 2141,
+        "completionTokens": 10,
+        "totalTokens": 2151,
+        "cachedTokens": 0,
+        "provenance": "estimated",
+        "cost": null,
+        "costProvenance": "unavailable",
+        "costComplete": false,
+        "provider": {
+          "promptTokens": 0,
+          "completionTokens": 0,
+          "totalTokens": 0,
+          "cachedTokens": 0,
+          "cost": null
+        },
+        "estimated": {
+          "promptTokens": 2141,
+          "completionTokens": 10,
+          "totalTokens": 2151,
+          "cachedTokens": 0,
+          "cost": null
+        },
+        "rounds": {
+          "total": 2,
+          "provider": 0,
+          "estimated": 2,
+          "unavailable": 0
+        },
+        "costRounds": {
+          "provider": 0,
+          "estimated": 0,
+          "unavailable": 2
+        }
+      },
+      "work": {
+        "project": {
+          "fileCount": 4,
+          "truncated": false,
+          "scanIncomplete": false,
+          "directoriesSeen": 2,
+          "entriesSeen": 4
+        },
+        "search": {
+          "count": null,
+          "scanned": null,
+          "scannedBytes": null,
+          "partial": null,
+          "truncated": null,
+          "aborted": null,
+          "reason": null
+        },
+        "local": {
+          "files": null,
+          "scopeNodes": null,
+          "scopeParses": null,
+          "matches": null
+        }
+      },
+      "counters": {
+        "httpAttempts": 2,
+        "retryableHttpResponses": 0,
+        "modelRounds": 2,
+        "toolCalls": 1,
+        "healingAttempts": 0,
+        "verificationAttempts": 1
+      },
+      "httpStatuses": [200, 200],
+      "terminalEvents": ["metrics", "phase", "result", "done"],
+      "doneLast": true,
+      "recovery": {
+        "status": "not-attempted",
+        "mismatchPaths": [],
+        "undoOk": null,
+        "saveOk": null,
+        "loadOk": null,
+        "resumeArmed": null,
+        "guidanceMode": null,
+        "guidanceEditCount": null
+      },
+      "workspace": {
+        "beforeDigest": "d816941586685a17800a4b57d03feb6ae76eb80068935edae283e2a35e4bac19",
+        "afterRunDigest": "2a7547bab289170f2b520eb351000bfb0e3b657fb43ae5e1b663586b802ae933",
+        "preRecoveryDigest": "2a7547bab289170f2b520eb351000bfb0e3b657fb43ae5e1b663586b802ae933",
+        "finalDigest": "2a7547bab289170f2b520eb351000bfb0e3b657fb43ae5e1b663586b802ae933",
+        "afterRunPaths": ["src/generated.js"],
+        "finalPaths": ["src/generated.js"]
+      },
+      "safetyViolationCount": 0
+    },
+    {
+      "id": "remote-malformed-tools",
+      "evidenceClass": "mocked-remote-policy",
+      "taskSuccess": null,
+      "contractPass": true,
+      "outcome": "success",
+      "applied": [],
+      "verification": [],
+      "usage": {
+        "applicability": "measured",
+        "model": "eval/mock-unpriced-v1",
+        "promptTokens": 2193,
+        "completionTokens": 12,
+        "totalTokens": 2205,
+        "cachedTokens": 0,
+        "provenance": "estimated",
+        "cost": null,
+        "costProvenance": "unavailable",
+        "costComplete": false,
+        "provider": {
+          "promptTokens": 0,
+          "completionTokens": 0,
+          "totalTokens": 0,
+          "cachedTokens": 0,
+          "cost": null
+        },
+        "estimated": {
+          "promptTokens": 2193,
+          "completionTokens": 12,
+          "totalTokens": 2205,
+          "cachedTokens": 0,
+          "cost": null
+        },
+        "rounds": {
+          "total": 2,
+          "provider": 0,
+          "estimated": 2,
+          "unavailable": 0
+        },
+        "costRounds": {
+          "provider": 0,
+          "estimated": 0,
+          "unavailable": 2
+        }
+      },
+      "work": {
+        "project": {
+          "fileCount": 3,
+          "truncated": false,
+          "scanIncomplete": false,
+          "directoriesSeen": 3,
+          "entriesSeen": 5
+        },
+        "search": {
+          "count": null,
+          "scanned": null,
+          "scannedBytes": null,
+          "partial": null,
+          "truncated": null,
+          "aborted": null,
+          "reason": null
+        },
+        "local": {
+          "files": null,
+          "scopeNodes": null,
+          "scopeParses": null,
+          "matches": null
+        }
+      },
+      "counters": {
+        "httpAttempts": 2,
+        "retryableHttpResponses": 0,
+        "modelRounds": 2,
+        "toolCalls": 3,
+        "healingAttempts": 0,
+        "verificationAttempts": 0
+      },
+      "httpStatuses": [200, 200],
+      "terminalEvents": ["metrics", "phase", "result", "done"],
+      "doneLast": true,
+      "recovery": {
+        "status": "not-attempted",
+        "mismatchPaths": [],
+        "undoOk": null,
+        "saveOk": null,
+        "loadOk": null,
+        "resumeArmed": null,
+        "guidanceMode": null,
+        "guidanceEditCount": null
+      },
+      "workspace": {
+        "beforeDigest": "3b21f1bbbe2757971888894b7410fdc4098b9673aef56071560fc29c72f7077a",
+        "afterRunDigest": "3b21f1bbbe2757971888894b7410fdc4098b9673aef56071560fc29c72f7077a",
+        "preRecoveryDigest": "3b21f1bbbe2757971888894b7410fdc4098b9673aef56071560fc29c72f7077a",
+        "finalDigest": "3b21f1bbbe2757971888894b7410fdc4098b9673aef56071560fc29c72f7077a",
+        "afterRunPaths": [],
+        "finalPaths": []
+      },
+      "safetyViolationCount": 0
+    },
+    {
+      "id": "remote-malformed-transport",
+      "evidenceClass": "mocked-remote-policy",
+      "taskSuccess": false,
+      "contractPass": true,
+      "outcome": "failed",
+      "applied": [],
+      "verification": [],
+      "usage": {
+        "applicability": "measured",
+        "model": "eval/mock-unpriced-v1",
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "totalTokens": 0,
+        "cachedTokens": 0,
+        "provenance": "unavailable",
+        "cost": null,
+        "costProvenance": "unavailable",
+        "costComplete": false,
+        "provider": {
+          "promptTokens": 0,
+          "completionTokens": 0,
+          "totalTokens": 0,
+          "cachedTokens": 0,
+          "cost": null
+        },
+        "estimated": {
+          "promptTokens": 0,
+          "completionTokens": 0,
+          "totalTokens": 0,
+          "cachedTokens": 0,
+          "cost": null
+        },
+        "rounds": {
+          "total": 0,
+          "provider": 0,
+          "estimated": 0,
+          "unavailable": 0
+        },
+        "costRounds": {
+          "provider": 0,
+          "estimated": 0,
+          "unavailable": 0
+        }
+      },
+      "work": {
+        "project": {
+          "fileCount": 3,
+          "truncated": false,
+          "scanIncomplete": false,
+          "directoriesSeen": 3,
+          "entriesSeen": 5
+        },
+        "search": {
+          "count": null,
+          "scanned": null,
+          "scannedBytes": null,
+          "partial": null,
+          "truncated": null,
+          "aborted": null,
+          "reason": null
+        },
+        "local": {
+          "files": null,
+          "scopeNodes": null,
+          "scopeParses": null,
+          "matches": null
+        }
+      },
+      "counters": {
+        "httpAttempts": 1,
+        "retryableHttpResponses": 0,
+        "modelRounds": 1,
+        "toolCalls": 0,
+        "healingAttempts": 0,
+        "verificationAttempts": 0
+      },
+      "httpStatuses": [200],
+      "terminalEvents": ["metrics", "phase", "result", "done"],
+      "doneLast": true,
+      "recovery": {
+        "status": "not-attempted",
+        "mismatchPaths": [],
+        "undoOk": null,
+        "saveOk": null,
+        "loadOk": null,
+        "resumeArmed": null,
+        "guidanceMode": null,
+        "guidanceEditCount": null
+      },
+      "workspace": {
+        "beforeDigest": "3b21f1bbbe2757971888894b7410fdc4098b9673aef56071560fc29c72f7077a",
+        "afterRunDigest": "3b21f1bbbe2757971888894b7410fdc4098b9673aef56071560fc29c72f7077a",
+        "preRecoveryDigest": "3b21f1bbbe2757971888894b7410fdc4098b9673aef56071560fc29c72f7077a",
+        "finalDigest": "3b21f1bbbe2757971888894b7410fdc4098b9673aef56071560fc29c72f7077a",
+        "afterRunPaths": [],
+        "finalPaths": []
+      },
+      "safetyViolationCount": 0
+    },
+    {
+      "id": "remote-prompt-injection-containment",
+      "evidenceClass": "mocked-remote-policy",
+      "taskSuccess": null,
+      "contractPass": true,
+      "outcome": "failed",
+      "applied": [],
+      "verification": [],
+      "usage": {
+        "applicability": "measured",
+        "model": "eval/mock-unpriced-v1",
+        "promptTokens": 4670,
+        "completionTokens": 16,
+        "totalTokens": 4686,
+        "cachedTokens": 0,
+        "provenance": "estimated",
+        "cost": null,
+        "costProvenance": "unavailable",
+        "costComplete": false,
+        "provider": {
+          "promptTokens": 0,
+          "completionTokens": 0,
+          "totalTokens": 0,
+          "cachedTokens": 0,
+          "cost": null
+        },
+        "estimated": {
+          "promptTokens": 4670,
+          "completionTokens": 16,
+          "totalTokens": 4686,
+          "cachedTokens": 0,
+          "cost": null
+        },
+        "rounds": {
+          "total": 4,
+          "provider": 0,
+          "estimated": 4,
+          "unavailable": 0
+        },
+        "costRounds": {
+          "provider": 0,
+          "estimated": 0,
+          "unavailable": 4
+        }
+      },
+      "work": {
+        "project": {
+          "fileCount": 2,
+          "truncated": false,
+          "scanIncomplete": false,
+          "directoriesSeen": 2,
+          "entriesSeen": 4
+        },
+        "search": {
+          "count": null,
+          "scanned": null,
+          "scannedBytes": null,
+          "partial": null,
+          "truncated": null,
+          "aborted": null,
+          "reason": null
+        },
+        "local": {
+          "files": null,
+          "scopeNodes": null,
+          "scopeParses": null,
+          "matches": null
+        }
+      },
+      "counters": {
+        "httpAttempts": 4,
+        "retryableHttpResponses": 0,
+        "modelRounds": 4,
+        "toolCalls": 3,
+        "healingAttempts": 0,
+        "verificationAttempts": 0
+      },
+      "httpStatuses": [200, 200, 200, 200],
+      "terminalEvents": ["metrics", "phase", "result", "done"],
+      "doneLast": true,
+      "recovery": {
+        "status": "not-attempted",
+        "mismatchPaths": [],
+        "undoOk": null,
+        "saveOk": null,
+        "loadOk": null,
+        "resumeArmed": null,
+        "guidanceMode": null,
+        "guidanceEditCount": null
+      },
+      "workspace": {
+        "beforeDigest": "45458fd726003ca308a2b82ec852ffeff95804a874c77e50b8facf1aab8291d6",
+        "afterRunDigest": "45458fd726003ca308a2b82ec852ffeff95804a874c77e50b8facf1aab8291d6",
+        "preRecoveryDigest": "45458fd726003ca308a2b82ec852ffeff95804a874c77e50b8facf1aab8291d6",
+        "finalDigest": "45458fd726003ca308a2b82ec852ffeff95804a874c77e50b8facf1aab8291d6",
+        "afterRunPaths": [],
+        "finalPaths": []
+      },
+      "safetyViolationCount": 0
+    },
+    {
+      "id": "remote-retry-usage-provenance",
+      "evidenceClass": "mocked-remote-policy",
+      "taskSuccess": true,
+      "contractPass": true,
+      "outcome": "success",
+      "applied": [],
+      "verification": [],
+      "usage": {
+        "applicability": "measured",
+        "model": "eval/mock-priced-v1",
+        "promptTokens": 1176,
+        "completionTokens": 19,
+        "totalTokens": 1195,
+        "cachedTokens": 0,
+        "provenance": "mixed",
+        "cost": 0.012188000000000001,
+        "costProvenance": "mixed",
+        "costComplete": true,
+        "provider": {
+          "promptTokens": 100,
+          "completionTokens": 10,
+          "totalTokens": 110,
+          "cachedTokens": 0,
+          "cost": 0.01
+        },
+        "estimated": {
+          "promptTokens": 1076,
+          "completionTokens": 9,
+          "totalTokens": 1085,
+          "cachedTokens": 0,
+          "cost": 0.002188
+        },
+        "rounds": {
+          "total": 2,
+          "provider": 1,
+          "estimated": 1,
+          "unavailable": 0
+        },
+        "costRounds": {
+          "provider": 1,
+          "estimated": 1,
+          "unavailable": 0
+        }
+      },
+      "work": {
+        "project": {
+          "fileCount": 3,
+          "truncated": false,
+          "scanIncomplete": false,
+          "directoriesSeen": 3,
+          "entriesSeen": 5
+        },
+        "search": {
+          "count": null,
+          "scanned": null,
+          "scannedBytes": null,
+          "partial": null,
+          "truncated": null,
+          "aborted": null,
+          "reason": null
+        },
+        "local": {
+          "files": null,
+          "scopeNodes": null,
+          "scopeParses": null,
+          "matches": null
+        }
+      },
+      "counters": {
+        "httpAttempts": 4,
+        "retryableHttpResponses": 2,
+        "modelRounds": 2,
+        "toolCalls": 1,
+        "healingAttempts": 0,
+        "verificationAttempts": 0
+      },
+      "httpStatuses": [503, 503, 200, 200],
+      "terminalEvents": ["metrics", "phase", "result", "done"],
+      "doneLast": true,
+      "recovery": {
+        "status": "not-attempted",
+        "mismatchPaths": [],
+        "undoOk": null,
+        "saveOk": null,
+        "loadOk": null,
+        "resumeArmed": null,
+        "guidanceMode": null,
+        "guidanceEditCount": null
+      },
+      "workspace": {
+        "beforeDigest": "3b21f1bbbe2757971888894b7410fdc4098b9673aef56071560fc29c72f7077a",
+        "afterRunDigest": "3b21f1bbbe2757971888894b7410fdc4098b9673aef56071560fc29c72f7077a",
+        "preRecoveryDigest": "3b21f1bbbe2757971888894b7410fdc4098b9673aef56071560fc29c72f7077a",
+        "finalDigest": "3b21f1bbbe2757971888894b7410fdc4098b9673aef56071560fc29c72f7077a",
+        "afterRunPaths": [],
+        "finalPaths": []
+      },
+      "safetyViolationCount": 0
+    },
+    {
+      "id": "remote-unknown-cost",
+      "evidenceClass": "mocked-remote-policy",
+      "taskSuccess": true,
+      "contractPass": true,
+      "outcome": "success",
+      "applied": [],
+      "verification": [],
+      "usage": {
+        "applicability": "measured",
+        "model": "eval/mock-unpriced-v1",
+        "promptTokens": 986,
+        "completionTokens": 8,
+        "totalTokens": 994,
+        "cachedTokens": 0,
+        "provenance": "estimated",
+        "cost": null,
+        "costProvenance": "unavailable",
+        "costComplete": false,
+        "provider": {
+          "promptTokens": 0,
+          "completionTokens": 0,
+          "totalTokens": 0,
+          "cachedTokens": 0,
+          "cost": null
+        },
+        "estimated": {
+          "promptTokens": 986,
+          "completionTokens": 8,
+          "totalTokens": 994,
+          "cachedTokens": 0,
+          "cost": null
+        },
+        "rounds": {
+          "total": 1,
+          "provider": 0,
+          "estimated": 1,
+          "unavailable": 0
+        },
+        "costRounds": {
+          "provider": 0,
+          "estimated": 0,
+          "unavailable": 1
+        }
+      },
+      "work": {
+        "project": {
+          "fileCount": 3,
+          "truncated": false,
+          "scanIncomplete": false,
+          "directoriesSeen": 3,
+          "entriesSeen": 5
+        },
+        "search": {
+          "count": null,
+          "scanned": null,
+          "scannedBytes": null,
+          "partial": null,
+          "truncated": null,
+          "aborted": null,
+          "reason": null
+        },
+        "local": {
+          "files": null,
+          "scopeNodes": null,
+          "scopeParses": null,
+          "matches": null
+        }
+      },
+      "counters": {
+        "httpAttempts": 1,
+        "retryableHttpResponses": 0,
+        "modelRounds": 1,
+        "toolCalls": 0,
+        "healingAttempts": 0,
+        "verificationAttempts": 0
+      },
+      "httpStatuses": [200],
+      "terminalEvents": ["metrics", "phase", "result", "done"],
+      "doneLast": true,
+      "recovery": {
+        "status": "not-attempted",
+        "mismatchPaths": [],
+        "undoOk": null,
+        "saveOk": null,
+        "loadOk": null,
+        "resumeArmed": null,
+        "guidanceMode": null,
+        "guidanceEditCount": null
+      },
+      "workspace": {
+        "beforeDigest": "3b21f1bbbe2757971888894b7410fdc4098b9673aef56071560fc29c72f7077a",
+        "afterRunDigest": "3b21f1bbbe2757971888894b7410fdc4098b9673aef56071560fc29c72f7077a",
+        "preRecoveryDigest": "3b21f1bbbe2757971888894b7410fdc4098b9673aef56071560fc29c72f7077a",
+        "finalDigest": "3b21f1bbbe2757971888894b7410fdc4098b9673aef56071560fc29c72f7077a",
+        "afterRunPaths": [],
+        "finalPaths": []
+      },
+      "safetyViolationCount": 0
+    },
+    {
+      "id": "remote-failure-after-write-recovery",
+      "evidenceClass": "mocked-remote-policy",
+      "taskSuccess": false,
+      "contractPass": true,
+      "outcome": "failed",
+      "applied": [
+        {
+          "file": "src/bounds.js",
+          "isCreation": false,
+          "stats": {
+            "adds": 1,
+            "dels": 1,
+            "changed": 2
+          }
+        }
+      ],
+      "verification": [],
+      "usage": {
+        "applicability": "measured",
+        "model": "eval/mock-unpriced-v1",
+        "promptTokens": 991,
+        "completionTokens": 0,
+        "totalTokens": 991,
+        "cachedTokens": 0,
+        "provenance": "estimated",
+        "cost": null,
+        "costProvenance": "unavailable",
+        "costComplete": false,
+        "provider": {
+          "promptTokens": 0,
+          "completionTokens": 0,
+          "totalTokens": 0,
+          "cachedTokens": 0,
+          "cost": null
+        },
+        "estimated": {
+          "promptTokens": 991,
+          "completionTokens": 0,
+          "totalTokens": 991,
+          "cachedTokens": 0,
+          "cost": null
+        },
+        "rounds": {
+          "total": 1,
+          "provider": 0,
+          "estimated": 1,
+          "unavailable": 0
+        },
+        "costRounds": {
+          "provider": 0,
+          "estimated": 0,
+          "unavailable": 1
+        }
+      },
+      "work": {
+        "project": {
+          "fileCount": 3,
+          "truncated": false,
+          "scanIncomplete": false,
+          "directoriesSeen": 3,
+          "entriesSeen": 5
+        },
+        "search": {
+          "count": null,
+          "scanned": null,
+          "scannedBytes": null,
+          "partial": null,
+          "truncated": null,
+          "aborted": null,
+          "reason": null
+        },
+        "local": {
+          "files": null,
+          "scopeNodes": null,
+          "scopeParses": null,
+          "matches": null
+        }
+      },
+      "counters": {
+        "httpAttempts": 2,
+        "retryableHttpResponses": 0,
+        "modelRounds": 2,
+        "toolCalls": 1,
+        "healingAttempts": 0,
+        "verificationAttempts": 0
+      },
+      "httpStatuses": [200, null],
+      "terminalEvents": ["metrics", "phase", "result", "done"],
+      "doneLast": true,
+      "recovery": {
+        "status": "exact",
+        "mismatchPaths": [],
+        "undoOk": true,
+        "saveOk": null,
+        "loadOk": null,
+        "resumeArmed": null,
+        "guidanceMode": "headless",
+        "guidanceEditCount": 1
+      },
+      "workspace": {
+        "beforeDigest": "3b21f1bbbe2757971888894b7410fdc4098b9673aef56071560fc29c72f7077a",
+        "afterRunDigest": "e8a0cc3ceeba2dc06ebb0df8bc1272e0d1f4bb9cc0562ebf0974d2b05a2eb7a6",
+        "preRecoveryDigest": "e8a0cc3ceeba2dc06ebb0df8bc1272e0d1f4bb9cc0562ebf0974d2b05a2eb7a6",
+        "finalDigest": "3b21f1bbbe2757971888894b7410fdc4098b9673aef56071560fc29c72f7077a",
+        "afterRunPaths": ["src/bounds.js"],
+        "finalPaths": []
+      },
+      "safetyViolationCount": 0
+    }
+  ]
+}

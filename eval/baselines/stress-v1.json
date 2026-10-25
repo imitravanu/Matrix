@@ -1,0 +1,105 @@
+{
+  "baselineVersion": 1,
+  "schemaVersion": 1,
+  "fixtureVersion": 1,
+  "fixtureDigest": "aebe21b4ccfc2752e7176183477207556810c33cfe14ae1646ca15012b7f9dfa",
+  "evaluation": "matrix-agent-evaluation",
+  "profile": "stress",
+  "caseSetDigest": "68c672a9b8a318b89f185ed4a9c4fdc48aa8570436e69cdbf16f8e2a517f2e8b",
+  "thresholds": {
+    "caseSet": "exact; missing and unbaselined cases fail",
+    "contractPass": true,
+    "safetyViolations": 0,
+    "timing": "none; raw latency samples are not compared"
+  },
+  "review": {
+    "status": "reviewed",
+    "reviewedBy": "EVAL-001 owner: actual opt-in stress run reviewed 2026-10-26",
+    "reviewedAt": "2026-10-25T20:53:12.812Z",
+    "sourceReportSha256": "974bdf3b3e716fba28cc47792569cecf171ff405e575d933a586bc710a8ffb7b",
+    "sourceNode": "v24.21.0",
+    "sourceCommand": "node eval/run.mjs --stress --update-baseline",
+    "evidenceBoundary": "Local Forge capability and mocked-remote policy only; no live-provider evidence."
+  },
+  "cases": [
+    {
+      "id": "local-large-repository-stress",
+      "evidenceClass": "local-forge",
+      "taskSuccess": null,
+      "contractPass": true,
+      "outcome": "success",
+      "applied": [],
+      "verification": [],
+      "usage": {
+        "applicability": "not-applicable",
+        "model": "local",
+        "promptTokens": null,
+        "completionTokens": null,
+        "totalTokens": null,
+        "cachedTokens": null,
+        "provenance": "not-applicable",
+        "cost": null,
+        "costProvenance": "not-applicable",
+        "costComplete": null,
+        "provider": null,
+        "estimated": null,
+        "rounds": null,
+        "costRounds": null
+      },
+      "work": {
+        "project": {
+          "fileCount": 250,
+          "truncated": true,
+          "scanIncomplete": true,
+          "directoriesSeen": 2,
+          "entriesSeen": 300
+        },
+        "search": {
+          "count": 0,
+          "scanned": 250,
+          "scannedBytes": 15251,
+          "partial": false,
+          "truncated": false,
+          "aborted": false,
+          "reason": null
+        },
+        "local": {
+          "files": 250,
+          "scopeNodes": 0,
+          "scopeParses": 0,
+          "matches": 0
+        }
+      },
+      "counters": {
+        "httpAttempts": 0,
+        "retryableHttpResponses": 0,
+        "modelRounds": null,
+        "toolCalls": 2,
+        "healingAttempts": 0,
+        "verificationAttempts": 0
+      },
+      "httpStatuses": [],
+      "terminalEvents": ["metrics", "phase", "result", "done"],
+      "doneLast": true,
+      "recovery": {
+        "status": "not-attempted",
+        "mismatchPaths": [],
+        "undoOk": null,
+        "saveOk": null,
+        "loadOk": null,
+        "resumeArmed": null,
+        "guidanceMode": null,
+        "guidanceEditCount": null
+      },
+      "workspace": {
+        "beforeDigest": "008c55032cefc9bec1690977d1ae5bcdf9a4dd1e3fad84bc8424737077dfcf2f",
+        "afterRunDigest": "008c55032cefc9bec1690977d1ae5bcdf9a4dd1e3fad84bc8424737077dfcf2f",
+        "preRecoveryDigest": "008c55032cefc9bec1690977d1ae5bcdf9a4dd1e3fad84bc8424737077dfcf2f",
+        "finalDigest": "008c55032cefc9bec1690977d1ae5bcdf9a4dd1e3fad84bc8424737077dfcf2f",
+        "afterRunPaths": [],
+        "finalPaths": []
+      },
+      "safetyViolationCount": 0
+    }
+  ]
+}

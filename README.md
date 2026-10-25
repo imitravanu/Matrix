@@ -213,13 +213,18 @@ npm run lint           # ESLint correctness rules
 npm run typecheck      # contract-focused JSDoc/checkJs
 npm run format:check   # Prettier without modifying files
 npm run coverage       # full suite once plus critical-module ratchets
+npm run eval           # 16 network-free agent cases + strict baseline comparison
 npm run smoke          # render sanity checks
 npm run bench          # bounded local benchmark cases
 npm run pack:check     # inspect the private internal pack without creating a tarball
 ```
 
-`npm run check` executes the full test suite only once, inside the coverage gate. `npm audit` remains a
-separate network-dependent check. The test suite uses temporary workspaces and a temporary
+`npm run check` executes the full test suite only once, inside the coverage gate. `npm run eval`
+separately exercises 16 deterministic Local Forge and mocked-remote policy cases against reviewed
+baselines; `node eval/run.mjs --stress` is an explicit large-repository opt-in. See
+[eval/README.md](eval/README.md) for evidence classes, metrics, and baseline-update policy. No live
+provider quality, price, availability, or latency claim is made. `npm audit` remains a separate
+network-dependent check. The test suite uses temporary workspaces and a temporary
 `MATRIX_HOME`; it never intentionally patches the checked-in demo. Tests cover the real Local Forge apply/deny/undo path, resumed-session
 undo, remote streaming with mocked HTTP, structural parsing, PNG encoding, responsive screen
 geometry, cached transcript scrolling, idle animation, the CLI, and failure paths including a missing
@@ -236,13 +241,13 @@ Follow-up coding agents should start with [AGENTS.md](AGENTS.md).
 Matrix remains a **private/internal CLI** at 1.0.0. The supported consumer entry point is the `matrix`
 command; `main: src/matrix.mjs` is retained for compatibility, not declared as a supported public module
 API. The pack allowlist includes only runtime modules, the runnable demo, user/architecture docs,
-[LICENSE](LICENSE), and [CHANGELOG.md](CHANGELOG.md). Tests, benchmarks, development configuration,
-credentials, local state, and scratch artifacts are excluded.
+[LICENSE](LICENSE), and [CHANGELOG.md](CHANGELOG.md). Tests, benchmarks, evaluation fixtures/baselines,
+development configuration, credentials, local state, generated reports, and scratch artifacts are excluded.
 
 Use `npm run pack:check` for a real `npm pack --dry-run --json` inspection with lifecycle scripts disabled.
 It verifies the complete file set, private/main/bin posture, and executable CLI without publishing or
-creating a tarball. [RELEASE.md](RELEASE.md) defines the full release checklist; hosted Node 22/24 CI is
-still required and is not claimed by the local checks.
+creating a tarball. [RELEASE.md](RELEASE.md) defines the full release checklist. Hosted run #3 passed
+on the hardening branch; every future release candidate still requires a fresh Node 22/24 CI pass.
 
 ## Limitations
 

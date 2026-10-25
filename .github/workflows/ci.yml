@@ -74,6 +74,11 @@ jobs:
         run: |
           set -o pipefail
           npm test 2>&1 | tee "${{ runner.temp }}/matrix-hostile-node${{ matrix.node-version }}.log"
+      - name: Run network-free agent evaluation
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run eval 2>&1 | tee "${{ runner.temp }}/matrix-eval-node${{ matrix.node-version }}.log"
       - name: Run responsive smoke checks
         shell: bash
         run: |
@@ -92,6 +97,9 @@ jobs:
           path: |
             ${{ runner.temp }}/matrix-check-node${{ matrix.node-version }}.log
             ${{ runner.temp }}/matrix-hostile-node${{ matrix.node-version }}.log
+            ${{ runner.temp }}/matrix-eval-node${{ matrix.node-version }}.log
+            eval/reports/default.json
+            eval/reports/default.txt
             ${{ runner.temp }}/matrix-pack-node${{ matrix.node-version }}.log
             ${{ runner.temp }}/matrix-audit-node${{ matrix.node-version }}.log
             ${{ runner.temp }}/matrix-smoke-node${{ matrix.node-version }}.log

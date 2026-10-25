@@ -16,6 +16,8 @@ establishes release hygiene without a version bump or publication.
   agent event stream; these lanes do not claim independent parallel execution.
 - A self-contained demo project, responsive render smoke checks, reproducible local benchmarks, and a
   network-free engineering suite with static checks and critical-module coverage ratchets.
+- A versioned 16-case Local Forge/mocked-policy evaluation with exact recovery and safety evidence,
+  strict reviewed baselines, and a separate opt-in large-repository stress profile.
 - ISC license text, this changelog, a maintainer release checklist, and a deliberate npm-pack
   allowlist with reproducible dry-run inspection.
 
@@ -30,8 +32,8 @@ establishes release hygiene without a version bump or publication.
 
 ### Validation boundaries
 
-- Local Node.js 22/24 checks do not replace the required hosted Node.js 22/24 CI matrix. Hosted CI
-  remains a release gate and is not claimed by this entry.
+- Local Node.js 22/24 checks do not replace the required hosted Node.js 22/24 CI matrix. Hosted run #3
+  passed on the hardening branch; every future release candidate still requires a fresh pass.
 - Provider tests use mocks and isolated fake credentials. They do not validate live model availability,
   prices, context limits, tool support, latency, or output quality. Any opt-in live check must be
   reported separately with its date and scope rather than inferred from this changelog.

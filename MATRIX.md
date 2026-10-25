@@ -359,13 +359,31 @@ and enforces line/branch/function ratchets for 12 safety, protocol, and public-c
 Individual `syntax`, `lint`, `typecheck`, `format:check`, and `coverage` scripts are also available.
 The lint toolchain requires Node 22.13+; local gates run on current Node 22 and 24.
 
+## Agent evaluation
+
+`npm run eval` runs a separate, serial, network-free evaluation of real controller/agent behavior.
+The default profile has nine Local Forge and seven mocked-remote policy cases covering fix, limited
+rename, create, deny, abort, exact undo/refusal, noisy verification, large-repository budgets,
+malformed tools/transport, prompt-injection containment, retry/usage provenance, and recovery.
+It is not a live model quality benchmark and does not duplicate the full unit suite.
+
+Case-specific `taskSuccess` is independent of `contractPass`; denied completion is not task completion.
+Reports retain structured safety violations, complete workspace/recovery evidence, per-attempt
+verification, independent retry counters, raw latency samples, and usage/cost provenance. Unknown cost
+is null, Local Forge model usage is `not-applicable`, and no cross-provider cost average is computed.
+Schema/fixture/baseline versions and exact case membership fail closed. Baseline updates require an
+explicit reviewed identity and are forbidden in CI. `node eval/run.mjs --stress` is a separate opt-in.
+Generated `eval/reports/` files are gitignored; only reviewed baselines are versioned. Hosted CI runs
+the default comparison and uploads sanitized failure evidence.
+
 ## Internal packaging
 
 Matrix is a private/internal CLI at 1.0.0. `private` remains true, and `main: src/matrix.mjs` is a
 compatibility entry rather than a newly supported public module API. `package.json#files` allows only
 `bin/`, `lib/`, `src/`, `demo-project/`, README/MATRIX, LICENSE, and CHANGELOG. The stripped internal
-pack intentionally omits source-checkout benchmarks, engineering tests/scripts, development configs,
-planning docs, credentials, local state, and scratch artifacts.
+pack intentionally omits source-checkout benchmarks and evaluation fixtures/baselines, engineering
+tests/scripts, development configs, planning docs, credentials, local state, generated reports, and
+scratch artifacts.
 
 `npm run pack:check` invokes real `npm pack --dry-run --json` with lifecycle scripts disabled and a
 temporary destination. It compares the complete file set against the source tree, verifies private,

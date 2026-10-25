@@ -10,6 +10,7 @@ reporting, and approval-gated writes before adding visual or agent capabilities.
 3. `ENGINEERING_REVIEW.md` — verified findings, baseline measurements, and risks.
 4. `ENGINEERING_PLAN.md` — stable task IDs, dependencies, acceptance criteria, and execution waves.
 5. `RELEASE.md` — private/internal package boundary and release-only gates.
+6. `eval/README.md` — evaluation evidence classes, metrics, baselines, and review policy.
 
 ## Environment and verification
 
@@ -19,6 +20,7 @@ reporting, and approval-gated writes before adding visual or agent capabilities.
 - Run `npm run check` for the complete syntax, ESLint, JSDoc/`checkJs`, Prettier, test, and critical-module coverage gate. It runs tests once inside `npm run coverage`.
 - Run `npm run smoke` for all screens at four terminal geometries.
 - Run `npm run bench` before and after rendering or indexing performance work.
+- Run `npm run eval` after changing agent behavior or evaluation contracts; stress and baseline updates are explicit, separate decisions.
 - Run `npm run syntax` after changing module boundaries or CLI entry points; use `node --check` for quick focused checks.
 - Use `npm run format:check` for verification. Restrict `npm run format` to deliberate formatting changes.
 - Run `npm run pack:check` after changing package boundaries; it must inspect the real dry-run pack without creating a tarball.

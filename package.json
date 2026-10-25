@@ -34,6 +34,7 @@
     "format:check": "prettier --check .",
     "format": "prettier --write .",
     "coverage": "node scripts/check-coverage.mjs",
+    "eval": "node eval/run.mjs",
     "pack:check": "node scripts/check-pack.mjs",
     "check": "npm run syntax && npm run lint && npm run typecheck && npm run format:check && npm run coverage"
   },

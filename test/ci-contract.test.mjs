@@ -23,6 +23,7 @@ test("hosted CI uses valid isolated job environments and every release gate", ()
     "npm run check",
     "npm run pack:check",
     "npm audit",
+    "npm run eval",
     "npm test",
     "npm run smoke",
     "node bin/matrix.mjs bench --iterations 1",
@@ -31,5 +32,6 @@ test("hosted CI uses valid isolated job environments and every release gate", ()
   }
   for (const version of ['"22"', '"24"']) assert.ok(workflow.includes(version));
   assert.match(workflow, /actions\/upload-artifact@v4/);
+  assert.match(workflow, /eval\/reports\/default\.json/);
   assert.match(workflow, /permissions:\n {2}contents: read/);
 });
