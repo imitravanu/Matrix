@@ -2,11 +2,12 @@ import test, { afterEach, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import React from "react";
 import { render } from "ink-testing-library";
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { MatrixApp } from "../src/matrix.mjs";
 import { listSessions, loadLatestSession, loadSession } from "../lib/session.mjs";
+import { inspectCommandPlan } from "../lib/command-policy.mjs";
 import {
   copyDemo,
   frameText,
@@ -14,6 +15,9 @@ import {
   makeTempDir,
   patchEnv,
   PROVIDER_ENVIRONMENT_KEYS,
+  contentChunks,
+  sseResponse,
+  toolCallChunks,
   waitFor,
 } from "./helpers.mjs";
 
@@ -25,8 +29,10 @@ const TIMING_REGRESSION_DELAY_MS = 80;
 let isolatedHome;
 let restoreProviderEnv;
 let fetchTrap;
+let expectedProviderCalls = 0;
 
 beforeEach(() => {
+  expectedProviderCalls = 0;
   isolatedHome = makeTempDir("matrix-app-provider-env-");
   restoreProviderEnv = patchEnv({
     HOME: isolatedHome,
@@ -37,7 +43,11 @@ beforeEach(() => {
 
 afterEach(() => {
   try {
-    assert.equal(fetchTrap.calls.length, 0, "the offline app must not make provider requests");
+    assert.equal(
+      fetchTrap.calls.length,
+      expectedProviderCalls,
+      "the app must make only explicitly mocked provider requests",
+    );
   } finally {
     fetchTrap.restore();
     restoreProviderEnv();
@@ -141,7 +151,17 @@ async function clearPrompt(app, value, prompt = "matrix ❯") {
   await waitInput(app, value, { prompt, present: false });
 }
 
-function setup(t, { initialSession = null, demo = null, autoApprove = false } = {}) {
+function setup(
+  t,
+  {
+    initialSession = null,
+    demo = null,
+    autoApprove = false,
+    offline = true,
+    initialModel = null,
+    enableCommands = false,
+  } = {},
+) {
   const copy = demo ?? copyDemo("matrix-app-");
   const home = join(copy.root, "home");
   const previousHome = process.env.MATRIX_HOME;
@@ -151,7 +171,9 @@ function setup(t, { initialSession = null, demo = null, autoApprove = false } = 
       cwd: copy.workspace,
       initialSession,
       autoApprove,
-      offline: true,
+      offline,
+      initialModel,
+      enableCommands,
     }),
   );
   let closed = false;
@@ -727,4 +749,145 @@ test("typing text starting with 'm', 'u', numbers, or screen keys preserves init
     /verify canvas pixel runs/,
     "full prompt on vision starting with v preserved",
   );
+});
+
+function provideCommandRounds(rounds) {
+  fetchTrap.restore();
+  expectedProviderCalls = rounds.length;
+  let index = 0;
+  fetchTrap = installFetchTrap(async () => {
+    if (index >= rounds.length) throw new Error("unexpected extra provider round");
+    const round = rounds[index++];
+    return round();
+  });
+}
+
+test("interactive command trust scrolls exact bytes, rejects persistent keys, and approves once", async (t) => {
+  const restore = patchEnv({
+    MATRIX_COLS: "40",
+    MATRIX_ROWS: "20",
+    OPENROUTER_API_KEY: "test-key",
+  });
+  t.after(restore);
+  const { app, demo, home } = setup(t, {
+    offline: false,
+    initialModel: "sonnet",
+    enableCommands: true,
+    autoApprove: true,
+  });
+  const marker = "INTERACTIVE-APPROVAL-ONLY-CANARY-ADV002";
+  const source = [
+    `// ${marker}`,
+    ...Array.from({ length: 36 }, (_, index) => `// exact scroll line ${index}`),
+    'require("node:fs").writeFileSync("command-created.txt", "snapshot");',
+    'console.log("interactive-command-ok");',
+  ].join("\n");
+  const plan = {
+    executable: process.execPath,
+    argv: ["-e", source],
+    cwd: demo.workspace,
+    script: source,
+  };
+  const inspected = inspectCommandPlan(plan, { workspace: demo.workspace });
+  assert.equal(inspected.ok, true, inspected.error);
+  const expectedHash = inspected.plan.planHash;
+  provideCommandRounds([
+    () => sseResponse(toolCallChunks("call_interactive", "run_sandboxed_command", plan)),
+    () => sseResponse(contentChunks("interactive command finished")),
+  ]);
+
+  await waitFrame(app, /S P A T I A L/, "the empty screen");
+  await typeLine(app, "go");
+  const gate = await waitFrame(app, /COMMAND TRUST · ONCE/, "the command trust gate");
+  assert.match(gate, /executable/);
+  assert.doesNotMatch(gate, /apply all|a approve|o run once/);
+  app.stdin.write("a");
+  app.stdin.write("o");
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.match(frameText(app), /COMMAND TRUST · ONCE/);
+  assert.equal(
+    fetchTrap.calls.length,
+    1,
+    "persistent keys must not approve or start another round",
+  );
+  assert.equal(existsSync(join(demo.workspace, "command-created.txt")), false);
+
+  app.stdin.write("\x1b2");
+  await waitFrame(app, /EXECUTION PLAN/, "read-only chat navigation during command approval");
+  assert.doesNotMatch(frameText(app), /COMMAND TRUST · ONCE/);
+  app.stdin.write("\x1b3");
+  await waitFrame(app, /COMMAND TRUST · ONCE/, "return to the pending command gate");
+  app.stdin.write("\u001b[F");
+  const bottom = await waitFrame(app, /Ctrl\+C abort run/, "the command trust footer");
+  assert.match(bottom, /writes discard/);
+  assert.match(bottom, /undo not applicable/);
+  const withHash = await scrollUntilFrame(app, "\u001b[5~", /plan hash/, "the exact plan hash");
+  const compact = withHash.replace(/[^A-Za-z0-9]/g, "");
+  assert.ok(compact.includes(expectedHash), "the screen must expose the exact reusable plan hash");
+
+  app.stdin.write("y");
+  await waitFrame(app, /interactive command finished/, "the approved command result", 15000);
+  await waitFrame(app, /Describe a task/, "the idle prompt after command completion");
+  assert.equal(existsSync(join(demo.workspace, "command-created.txt")), false);
+  const saved = loadLatestSession(demo.workspace, { home });
+  assert.ok(saved);
+  assert.equal(saved.undoRun, null);
+  const command = saved.history.at(-1).commands?.[0];
+  assert.equal(command?.executionOk, true);
+  assert.equal(command?.processOk, true);
+  assert.equal(command?.writes, "discarded");
+  assert.equal(command?.undo, "not-applicable");
+  const projections = [JSON.stringify(saved)];
+  for (const name of readdirSync(join(home, "runs"))) {
+    projections.push(readFileSync(join(home, "runs", name), "utf8"));
+  }
+  for (const projection of projections) assert.equal(projection.includes(marker), false);
+  await pressUntilFrame(app, "\x1bu", /no applied patch/, "no edit undo for sandbox writes");
+});
+
+test("Ctrl+C aborts a run waiting for command trust and settles without execution", async (t) => {
+  const restore = patchEnv({
+    MATRIX_COLS: "40",
+    MATRIX_ROWS: "20",
+    OPENROUTER_API_KEY: "test-key",
+  });
+  t.after(restore);
+  const { app, demo, home } = setup(t, {
+    offline: false,
+    initialModel: "sonnet",
+    enableCommands: true,
+  });
+  const marker = "CANCELLED-APPROVAL-ONLY-CANARY-ADV002";
+  const source = `// ${marker}\nrequire("node:fs").writeFileSync("must-not-exist.txt", "no");`;
+  const plan = {
+    executable: process.execPath,
+    argv: ["-e", source],
+    cwd: demo.workspace,
+    script: source,
+  };
+  provideCommandRounds([
+    () => sseResponse(toolCallChunks("call_cancel", "run_sandboxed_command", plan)),
+  ]);
+  await waitFrame(app, /S P A T I A L/, "the empty screen");
+  await typeLine(app, "go");
+  await waitFrame(app, /COMMAND TRUST · ONCE/, "the pending command gate");
+  app.stdin.write("\x03");
+  await waitFrame(app, /Model run aborted|aborted/, "the aborted run result", 15000);
+  await waitFrame(app, /Describe a task/, "the idle prompt after command cancellation");
+  assert.equal(fetchTrap.calls.length, 1);
+  assert.equal(existsSync(join(demo.workspace, "must-not-exist.txt")), false);
+  assert.doesNotMatch(frameText(app), /COMMAND TRUST · ONCE/);
+  const records = readdirSync(join(home, "runs")).flatMap((name) =>
+    readFileSync(join(home, "runs", name), "utf8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line)),
+  );
+  assert.equal(
+    records.some((record) => record.type === "command:start"),
+    false,
+  );
+  assert.ok(records.some((record) => record.type === "command:decision"));
+  assert.equal(JSON.stringify(records).includes(marker), false);
 });

@@ -4,6 +4,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const root = fileURLToPath(new URL("..", import.meta.url));
 
 export const COVERAGE_THRESHOLDS = Object.freeze({
+  "lib/command-policy.mjs": { line: 90, branch: 80, functions: 100 },
+  "lib/command-execution.mjs": { line: 90, branch: 85, functions: 100 },
+  "lib/linux-bwrap.mjs": { line: 80, branch: 65, functions: 90 },
+  "lib/linux-snapshot.mjs": { line: 90, branch: 75, functions: 100 },
   "lib/controller.mjs": { line: 90, branch: 70, functions: 90 },
   "lib/diff.mjs": { line: 95, branch: 85, functions: 90 },
   "lib/local-agent.mjs": { line: 95, branch: 80, functions: 95 },

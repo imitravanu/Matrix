@@ -14,8 +14,11 @@
     "lib/contracts.mjs",
     "lib/project.mjs",
     "lib/controller.mjs",
+    "lib/model-agent.mjs",
+    "lib/cli.mjs",
     "src/result-projection.mjs",
     "src/event-reducer.mjs",
+    "src/keyboard.mjs",
     "test/public-contracts.test.mjs"
   ]
 }

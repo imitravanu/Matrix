@@ -40,12 +40,22 @@ function toolLines(message, width) {
   const out = [];
   for (const card of message.toolCards ?? []) {
     if (card.name === "propose_edit" || card.name === "run_tests") continue;
-    const glyph = card.ok === false ? "✗" : "✓";
-    const color = card.ok === false ? forge.err : forge.muted;
+    const glyph = card.running ? "◐" : card.ok === false ? "✗" : "✓";
+    const color = card.running ? forge.warn : card.ok === false ? forge.err : forge.muted;
     out.push({
       text: truncateToWidth(`${glyph} ${card.name} · ${card.summary ?? ""}`, width),
       color,
     });
+    if (card.name === "run_sandboxed_command" && card.data) {
+      const command = card.data;
+      out.push({
+        text: truncateToWidth(
+          `  processOk=${command.processOk} · cleanup=${command.cleanupStatus} · output=${command.outputTruncated ? "truncated" : "bounded"} · live unchanged · undo not applicable`,
+          width,
+        ),
+        color: forge.muted,
+      });
+    }
   }
   if (out.length > 0) out.push({ text: "", color: forge.muted });
   return out;

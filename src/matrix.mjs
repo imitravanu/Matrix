@@ -27,7 +27,7 @@ import { LOCAL_MODEL, MODELS, formatCost, modelIndex, resolveModel } from "../li
 import { createRunController } from "../lib/controller.mjs";
 import { applySwarmEvent, createSwarmState, focusLane } from "../lib/swarm.mjs";
 import { newRunId, saveSession, listSessions, matrixHome } from "../lib/session.mjs";
-import { runDoctor, formatDoctor } from "../lib/doctor.mjs";
+import { runDoctorAsync, formatDoctor } from "../lib/doctor.mjs";
 import { writePng } from "../lib/raster.mjs";
 import { buildVisionCanvas, VISION_MODES } from "./screens/vision.mjs";
 import { Header, InputBar, KeyHints, SlashMenu, StatusBar } from "./screens/common.mjs";
@@ -73,6 +73,7 @@ export function MatrixApp({
   initialSession = null,
   autoApprove: initialAutoApprove = false,
   offline = false,
+  enableCommands = false,
   checkCredentialAvailability = isOpenRouterAvailable,
 } = {}) {
   const { exit } = useApp();
@@ -100,6 +101,10 @@ export function MatrixApp({
     isActive: !reduceMotion && running && (screen === "chat" || screen === "swarm"),
   });
   const [permission, setPermission] = useState(null);
+  const [commandTrustRequest, setCommandTrustRequest] = useState(null);
+  const [commandTrustScroll, setCommandTrustScroll] = useState(0);
+  const commandTrustBoundsRef = useRef({ total: 0, height: 10, maxOffset: 0 });
+  const commandTrustResolved = useRef(false);
   const [testTrustRequest, setTestTrustRequest] = useState(null);
   const [testTrustScroll, setTestTrustScroll] = useState(0);
   const testTrustBoundsRef = useRef({ total: 0, height: 10, maxOffset: 0 });
@@ -190,6 +195,30 @@ export function MatrixApp({
     setSlashIndex(0);
   }, [inputState.value]);
 
+  const requestCommandApproval = useCallback((request) => {
+    return new Promise((resolve) => {
+      commandTrustResolved.current = false;
+      setCommandTrustScroll(0);
+      setReturnScreen(screenRef.current === "empty" ? "chat" : screenRef.current);
+      setCommandTrustRequest({ ...request, resolve });
+      setScreen("permission");
+    });
+  }, []);
+  const reportCommandTrustBounds = useCallback((bounds) => {
+    commandTrustBoundsRef.current = bounds;
+  }, []);
+  const settleCommandTrust = useCallback(
+    (decision) => {
+      const request = commandTrustRequest;
+      if (!request || commandTrustResolved.current) return;
+      commandTrustResolved.current = true;
+      setCommandTrustRequest(null);
+      setScreen(returnScreen);
+      request.resolve(decision);
+    },
+    [commandTrustRequest, returnScreen],
+  );
+
   const requestTestApproval = useCallback((request) => {
     return new Promise((resolve) => {
       testTrustResolved.current = false;
@@ -219,8 +248,11 @@ export function MatrixApp({
       createRunController({
         onEvent: (event) => handleEventRef.current?.(event),
         onTestTrustRequest: requestTestApproval,
+        onCommandTrustRequest: requestCommandApproval,
+        enableCommands,
+        home: matrixHome(),
       }),
-    [requestTestApproval],
+    [enableCommands, requestCommandApproval, requestTestApproval],
   );
 
   // Resuming a session should not be read-only: re-arm the complete run when
@@ -353,6 +385,7 @@ export function MatrixApp({
     (result) => {
       if (!result || resultHandled.current) return;
       resultHandled.current = true;
+      if (commandTrustRequest) settleCommandTrust("n");
       if (testTrustRequest) settleTestTrust("n");
       const { normalized, finalMetrics, message } = projectResult(result, {
         liveVerification: liveRef.current?.verifyTests,
@@ -372,7 +405,14 @@ export function MatrixApp({
       else if (normalized.summary) flash(normalized.summary, 5000);
       saveRef.current?.(next, finalMetrics);
     },
-    [flash, resetAutoApprove, settleTestTrust, testTrustRequest],
+    [
+      commandTrustRequest,
+      flash,
+      resetAutoApprove,
+      settleCommandTrust,
+      settleTestTrust,
+      testTrustRequest,
+    ],
   );
 
   handleEventRef.current = (event) => {
@@ -684,9 +724,9 @@ export function MatrixApp({
     setScreen("chat");
   }, [model, project, sessionId, tokenStats, flash]);
 
-  const runDoctorCommand = useCallback(() => {
+  const runDoctorCommand = useCallback(async () => {
     try {
-      const report = runDoctor({ cwd, stdout: process.stdout });
+      const report = await runDoctorAsync({ cwd, stdout: process.stdout });
       const text = formatDoctor(report, { color: false });
       const message = {
         id: `doctor-${Date.now()}`,
@@ -832,7 +872,7 @@ export function MatrixApp({
           showSession();
           break;
         case "/doctor":
-          runDoctorCommand();
+          await runDoctorCommand();
           break;
         case "/quit":
           saveRef.current?.();
@@ -916,6 +956,10 @@ export function MatrixApp({
           setChatScroll((offset) =>
             Math.min(Math.max(0, chatBounds.total - chatBounds.height), offset + 3),
           );
+        } else if (screen === "permission" && commandTrustRequest) {
+          setCommandTrustScroll((offset) => Math.max(0, offset - 3));
+        } else if (screen === "permission" && testTrustRequest) {
+          setTestTrustScroll((offset) => Math.max(0, offset - 3));
         } else if (screen === "permission") {
           setPermissionScroll((offset) => Math.max(0, offset - 3));
         } else if (screen === "model") {
@@ -930,6 +974,12 @@ export function MatrixApp({
       } else if (mouse.direction === "down") {
         if (screen === "chat" || screen === "empty") {
           setChatScroll((offset) => Math.max(0, offset - 3));
+        } else if (screen === "permission" && commandTrustRequest) {
+          const bounds = commandTrustBoundsRef.current;
+          setCommandTrustScroll((offset) => Math.min(bounds.maxOffset, offset + 3));
+        } else if (screen === "permission" && testTrustRequest) {
+          const bounds = testTrustBoundsRef.current;
+          setTestTrustScroll((offset) => Math.min(bounds.maxOffset, offset + 3));
         } else if (screen === "permission") {
           setPermissionScroll((offset) =>
             Math.min(Math.max(0, permissionBounds.total - permissionBounds.height), offset + 3),
@@ -958,12 +1008,14 @@ export function MatrixApp({
         screen,
         inputValue: inputState.value,
         permission,
+        commandTrustActive: Boolean(commandTrustRequest),
         testTrustActive: Boolean(testTrustRequest),
         permissionResolved: permissionResolved.current,
         running: runningRef.current,
         chatBounds,
         permissionBounds,
         helpBounds: helpBoundsRef.current,
+        commandTrustBounds: commandTrustBoundsRef.current,
         testTrustBounds: testTrustBoundsRef.current,
         slashMatchCount: slashCount,
         scopeCount,
@@ -975,6 +1027,11 @@ export function MatrixApp({
 
     switch (action.type) {
       case "ctrl-c": {
+        if (commandTrustRequest) {
+          if (runningRef.current) controller.abort();
+          settleCommandTrust("n");
+          return;
+        }
         if (testTrustRequest) {
           if (runningRef.current) {
             if (testAbortRef.current) testAbortRef.current.abort();
@@ -999,8 +1056,9 @@ export function MatrixApp({
       }
       case "primary-view": {
         if (action.screen === "permission") {
-          setScreen(permission ? "permission" : "chat");
-          if (!permission) flash("no patch waiting");
+          const overlay = commandTrustRequest || testTrustRequest || permission;
+          setScreen(overlay ? "permission" : "chat");
+          if (!overlay) flash("no approval waiting");
         } else if (action.screen === "scope") {
           openScope();
         } else {
@@ -1037,6 +1095,9 @@ export function MatrixApp({
       }
       case "return-screen":
         setScreen(returnScreen);
+        return;
+      case "command-trust":
+        settleCommandTrust(action.decision);
         return;
       case "test-trust":
         settleTestTrust(action.decision);
@@ -1083,11 +1144,13 @@ export function MatrixApp({
         const setter =
           action.target === "help"
             ? setHelpScroll
-            : action.target === "test-trust"
-              ? setTestTrustScroll
-              : action.target === "permission"
-                ? setPermissionScroll
-                : setChatScroll;
+            : action.target === "command-trust"
+              ? setCommandTrustScroll
+              : action.target === "test-trust"
+                ? setTestTrustScroll
+                : action.target === "permission"
+                  ? setPermissionScroll
+                  : setChatScroll;
         if (action.absolute !== undefined) setter(action.absolute);
         else setter((offset) => Math.min(action.maxOffset, Math.max(0, offset + action.delta)));
         return;
@@ -1230,9 +1293,13 @@ export function MatrixApp({
       running,
       waiting:
         screen === "permission" &&
-        (Boolean(testTrustRequest) || (permission?.status ?? "pending") === "pending"),
+        (Boolean(commandTrustRequest) ||
+          Boolean(testTrustRequest) ||
+          (permission?.status ?? "pending") === "pending"),
       phase: live?.phase ?? "idle",
       tokenStats,
+      commandTrust: Boolean(commandTrustRequest),
+      testTrust: Boolean(testTrustRequest),
     }),
     h(
       Box,
@@ -1251,6 +1318,9 @@ export function MatrixApp({
         permissionExpanded: diffExpanded,
         permissionScroll,
         onPermissionBounds: setPermissionBounds,
+        commandTrustRequest,
+        commandTrustScroll,
+        onCommandTrustBounds: reportCommandTrustBounds,
         testTrustRequest,
         testTrustScroll,
         onTestTrustBounds: reportTestTrustBounds,
@@ -1301,26 +1371,29 @@ export function MatrixApp({
           disabled: false,
           running,
           phase: live?.phase ?? "idle",
-          autoApprove,
+          autoApprove: commandTrustRequest || testTrustRequest ? false : autoApprove,
         })
       : null,
     h(StatusBar, {
       screen,
       model,
       running,
-      autoApprove,
       status,
       cols,
       scroll: chatScrollInfo,
+      autoApprove: commandTrustRequest || testTrustRequest ? false : autoApprove,
     }),
     h(KeyHints, {
       screen,
       running,
       waiting:
         screen === "permission" &&
-        (Boolean(testTrustRequest) || (permission?.status ?? "pending") === "pending"),
-      autoApprove,
+        (Boolean(commandTrustRequest) ||
+          Boolean(testTrustRequest) ||
+          (permission?.status ?? "pending") === "pending"),
+      autoApprove: commandTrustRequest || testTrustRequest ? false : autoApprove,
       cols,
+      commandTrust: Boolean(commandTrustRequest),
       testTrust: Boolean(testTrustRequest),
     }),
   );
@@ -1341,4 +1414,5 @@ export {
 };
 export { ChatScreen, buildChatLines } from "./screens/chat.mjs";
 export { buildPermissionLines } from "./screens/permission.mjs";
+export { buildCommandTrustLines } from "./screens/command-trust.mjs";
 export { buildVisionCanvas, SCREENS };

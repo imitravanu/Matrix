@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 import { HELP_TEXT, parseArgv } from "../lib/cli.mjs";
-import { formatDoctor, runDoctor } from "../lib/doctor.mjs";
+import { formatDoctor, runDoctor, runDoctorAsync } from "../lib/doctor.mjs";
 import { copyDemo } from "./helpers.mjs";
 
 test("parseArgv accepts commands, tasks, flags and --", () => {
@@ -95,6 +95,38 @@ test("parseArgv fails loudly on malformed input", () => {
   assert.throws(() => parseArgv(["bench", "--screen", "chat"]), /--screen is only valid with/);
 });
 
+test("command flags are exact, separate, and restricted to a headless task", () => {
+  const hash = "a".repeat(64);
+  const enabled = parseArgv(["inspect", "--enable-commands"]);
+  assert.equal(enabled.enableCommands, true);
+  assert.equal(enabled.approvedCommandPlanHash, null);
+  assert.equal(enabled.autoApprove, false);
+  const allowed = parseArgv(["inspect", `--allow-command=${hash}`, "--enable-commands"]);
+  assert.equal(allowed.approvedCommandPlanHash, hash);
+  assert.equal(
+    parseArgv(["inspect", "--enable-commands", "--allow-command", hash]).approvedCommandPlanHash,
+    hash,
+  );
+  for (const args of [
+    ["inspect", `--allow-command=${hash}`],
+    ["--enable-commands", `--allow-command=${hash}`],
+    ["inspect", "--enable-commands", "--allow-command", "A".repeat(64)],
+    ["inspect", "--enable-commands", "--allow-command", "a".repeat(63)],
+    ["inspect", "--enable-commands", "--allow-command", `${hash}${hash}`],
+    ["inspect", "--enable-commands", "--allow-command", hash, "--allow-command", hash],
+    ["inspect", "--enable-commands", "--enable-commands"],
+    ["doctor", "--enable-commands"],
+    ["sessions", "--enable-commands", `--allow-command=${hash}`, "task"],
+    ["dump", "--enable-commands"],
+    ["inspect", "--enable-commands=true"],
+  ]) {
+    assert.throws(() => parseArgv(args), undefined, args.join(" "));
+  }
+  assert.equal(parseArgv(["inspect", "--yes", "--offline"]).enableCommands, false);
+  assert.match(HELP_TEXT, /COMMAND TRUST/);
+  assert.match(HELP_TEXT, /--allow-command <hash>/);
+});
+
 test("runDoctor reports real capabilities and formatDoctor stays readable", (t) => {
   const demo = copyDemo("matrix-doctor-");
   t.after(() => demo.cleanup());
@@ -159,4 +191,55 @@ test("runDoctor reports a missing workspace as a failure, not a crash", (t) => {
   assert.equal(workspace.status, "fail");
   assert.ok(report.summary.fail >= 1);
   assert.match(formatDoctor(report, { color: false }), /workspace\s+fail|✗ workspace/);
+});
+
+test("async doctor awaits the real sandbox policy probe and reports its no-seccomp boundary", async (t) => {
+  const demo = copyDemo("matrix-doctor-sandbox-");
+  t.after(() => demo.cleanup());
+  process.env.MATRIX_HOME = join(demo.root, "home");
+  t.after(() => {
+    delete process.env.MATRIX_HOME;
+  });
+  const sync = runDoctor({ cwd: demo.workspace, stdout: { isTTY: false }, env: {} });
+  assert.equal(sync.sandbox.probed, false);
+  assert.equal(sync.sandbox.available, false);
+  assert.match(sync.checks.find((check) => check.name === "linux-sandbox").detail, /not probed/);
+
+  const report = await runDoctorAsync({ cwd: demo.workspace, stdout: { isTTY: false }, env: {} });
+  assert.equal(report.sandbox.probed, true);
+  assert.equal(report.sandbox.available, true, report.sandbox.reason);
+  assert.equal(report.sandbox.reason, null);
+  assert.equal(
+    report.sandbox.policy.seccomp,
+    "none; namespace isolation is not a kernel-syscall filter",
+  );
+  const availability = report.checks.find((check) => check.name === "linux-sandbox");
+  assert.equal(availability.status, "ok");
+  assert.match(availability.detail, /real namespace\/snapshot probe passed/);
+  assert.match(
+    report.checks.find((check) => check.name === "sandbox-policy").detail,
+    /seccomp=none/,
+  );
+});
+
+test("failed sandbox probes remain unavailable instead of becoming synchronous success", async (t) => {
+  const demo = copyDemo("matrix-doctor-sandbox-failed-");
+  t.after(() => demo.cleanup());
+  process.env.MATRIX_HOME = join(demo.root, "home");
+  t.after(() => {
+    delete process.env.MATRIX_HOME;
+  });
+  const report = await runDoctorAsync({
+    cwd: demo.workspace,
+    stdout: { isTTY: false },
+    env: {},
+    probeSandbox: async () => ({ available: false, reason: "namespaces unsupported" }),
+  });
+  assert.equal(report.sandbox.probed, true);
+  assert.equal(report.sandbox.available, false);
+  assert.equal(report.sandbox.reason, "namespaces unsupported");
+  const availability = report.checks.find((check) => check.name === "linux-sandbox");
+  assert.equal(availability.status, "warn");
+  assert.match(availability.detail, /unavailable.*namespaces unsupported/);
+  assert.match(availability.hint, /no unsandboxed fallback/);
 });

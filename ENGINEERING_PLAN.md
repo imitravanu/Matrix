@@ -59,6 +59,7 @@ non-negotiable invariants.
 | `TOOL-001` — real static and coverage engineering gate              | **DONE** | Syntax, lint, JSDoc/checkJs, formatting, and 12 critical-module coverage ratchets pass clean installs on Node 22/24.                    |
 | `REL-001` — private package and release posture                     | **DONE** | ISC license, changelog, release checklist, and a 59-file dry-run pack allowlist preserve private/main/bin compatibility.                |
 | `CI-001` — hosted Node 22/24 engineering gate                       | **DONE** | Hosted run #3 passes clean install, static tests, hostile tests, pack, audit, smoke, and benchmarks on both versions.                   |
+| `EVAL-001` — versioned agent evaluation system                      | **DONE** | Sixteen default and one stress contracts pass locally and hosted run #4 passes the strict default baseline on Node 22/24.               |
 | `DIFF-001` — multi-hunk and edit-coordinate correctness             | **DONE** | Original-coordinate multi-hunk round trips and non-finite rejection.                                                                    |
 | `DIFF-002` — lossless newline and encoding behavior                 | **DONE** | Explicit EOL/EOF metadata, mixed-EOL refusal, standard marker support, and 60 deterministic round-trip fixtures.                        |
 | `PROC-001` — process-output correctness and bounds                  | **DONE** | Stream/UTF-8/long-line/noisy-summary/latest-400/direct-UI bounds and timer cleanup tests.                                               |
@@ -71,11 +72,12 @@ non-negotiable invariants.
 | `UX-005` — keyboard, reduced-motion, and semantic UI                | **DONE** | Scrollable help at 40×20, all-eight-view geometry checks, static reduced motion, and textual Vision/screen-reader content.              |
 | `DOC-002` — executable documentation contracts                      | **DONE** | Slash/key/tool/view/recovery documentation is checked by `test/docs.test.mjs`.                                                          |
 
-**Current baseline:** 388/388 tests on local Node 24.21.0 and 22.23.4, plus 388/388 with hostile fake
+**Current baseline:** 434/434 tests on local Node 24.21.0 and 22.23.4, plus 434/434 with hostile fake
 provider variables on Node 24; 16/16 default and 1/1 stress eval contracts; 32/32 responsive smoke checks;
-32 benchmark cases; 113 module syntax checks; 94.41% line / 83.82% branch / 93.92% function V8 coverage on
-Node 24; and zero npm-audit findings. `npm run check`, `npm run eval`, and the 59-file `npm run pack:check`
-pass locally. Hosted CI run #3 passed the core matrix on both versions; the new eval step awaits its first run.
+32 benchmark cases; 122 module syntax checks; 94.06% line / 84.11% branch / 94.05% function V8 coverage on
+Node 24; and zero npm-audit findings. `npm run check`, `npm run eval`, and the 64-file `npm run pack:check`
+pass locally. Hosted CI run #4 passed the complete matrix, including the strict default eval baseline,
+on both Node versions at commit `f48b661`; hosted bubblewrap validation is next.
 
 ## 3. Phase summary and execution waves
 
@@ -96,8 +98,8 @@ pass locally. Hosted CI run #3 passed the core matrix on both versions; the new 
    `BENCH-001` are complete. Local and hosted Node 22/24 gates pass.
 4. **Wave D:** `REF-001`, `TOOL-001`, `DOC-002`, and `REL-001` are complete. CI passes the full
    static/test gate, package inspection, dependency audit, hostile tests, smoke, and benchmarks.
-5. **Wave E:** `EVAL-001` has 16/16 default and 1/1 stress contracts passing locally on Node 22/24;
-   hosted eval validation is next. `ADV-002` and `ADV-001` follow the accepted baseline.
+5. **Wave E:** `EVAL-001` is complete locally and in hosted run #4. `ADV-002` core and integration
+   pass locally on Node 22/24; hosted sandbox validation is next. `ADV-001` follows that gate.
 
 Dependencies are minimum ordering, not permission to edit overlapping files concurrently.
 
@@ -375,7 +377,7 @@ hostile-provider tests pass 381/381, smoke/benchmarks pass, and `npm audit` repo
 and failure artifacts. Hosted run #3 passed both versions at `bb2e124`; an invalid job-level context and
 filesystem/viewport-specific fixture assumptions were fixed with regressions. Local Node 22.23.4 and
 24.21.0 engineering gates pass 388/388, and PNG tests compare portable RGBA scanlines rather than
-zlib-specific compressed bytes. The workflow now also runs `npm run eval`; its first hosted run is pending.
+zlib-specific compressed bytes. Hosted run #4 also passed `npm run eval` on both versions at `f48b661`.
 
 - Run `npm ci`, Python/pytest setup, tests, smoke, syntax/static checks, and relevant stress smoke on Node 22 and 24.
 - Isolate `HOME`/`MATRIX_HOME`, use fake/no credentials, and prohibit live provider calls.
@@ -412,7 +414,7 @@ future release candidate still requires a fresh pass.
 
 ### `EVAL-001` — Add a versioned agent evaluation system
 
-**Priority:** P3 · **Size:** L · **Status:** IN PROGRESS
+**Priority:** P3 · **Size:** L · **Status:** DONE
 **Owns:** evaluation fixtures/runner/metrics; no production behavior changes required
 
 - Build deterministic local tasks for fix, rename, create, deny, abort, undo, noisy verification, malformed tools,
@@ -425,18 +427,24 @@ The versioned runner covers 16 default cases and one opt-in stress case with san
 reviewed baselines, exact recovery, independent retry/verification metrics, and zero safety violations.
 Default eval and baseline comparison pass locally on Node 22.23.4 and 24.21.0, including a hostile-provider
 run; stress passes on Node 24. `npm run eval`, recursive syntax, release documentation, and CI/artifact
-wiring are present. Generated reports are gitignored. Hosted execution of this new eval step remains required
-before `DONE`; no live-provider evidence is claimed.
+wiring are present. Generated reports are gitignored. Hosted run #4 passed the strict default comparison
+on Node 22 and 24 at `f48b661`; no live-provider evidence is claimed.
 
 ### `ADV-002` — Design and implement an OS-sandboxed command capability
 
-**Priority:** P3 · **Size:** L · **Status:** BLOCKED by `SEC-001` and `EVAL-001`
+**Priority:** P3 · **Size:** L · **Status:** IN PROGRESS
 **Owns:** new execution-policy/sandbox modules and adversarial tests; do not restore legacy `run_command`
 
 - Require separate opt-in and per-command approval with exact argv/cwd/script; default to executable-plus-argv, not shell strings.
 - Enforce workspace-only writes and explicit network/secret policies using OS sandboxing where supported; otherwise disable.
 - Acceptance: redirection, interpreters, `sed -i`, substitution, traversal, symlink races, network exfiltration, and denied-edit
   replacement cannot escape policy; headless needs a distinct allow flag; audit/undo limitations are explicit and tested.
+
+The core and integration are implemented: strict one-shot policy, disposable no-follow bubblewrap snapshots,
+mandatory audits, dynamic model schemas, headless `--enable-commands`/`--allow-command`, interactive
+command-trust UI, and real async Doctor probing. All 33 core tests pass on external Node 22 and system Node 24;
+the complete gate passes 434/434 on both with 122 syntax modules. Default six-tool behavior and the eval
+baseline remain unchanged. Hosted execution with the new explicit bubblewrap setup remains before `DONE`.
 
 ### `ADV-001` — Implement real isolated parallel agent execution
 

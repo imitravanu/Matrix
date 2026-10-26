@@ -40,7 +40,8 @@ import {
   newRunId,
 } from "../lib/session.mjs";
 import { createTestPolicy, TEST_ORIGIN, withTestExecutionContext } from "../lib/test-policy.mjs";
-import { runDoctor, formatDoctor } from "../lib/doctor.mjs";
+import { createCommandPolicy } from "../lib/command-policy.mjs";
+import { runDoctorAsync, formatDoctor } from "../lib/doctor.mjs";
 import { halfBlockAnsi, toAscii, writePng } from "../lib/raster.mjs";
 import { buildVision } from "../lib/graph.mjs";
 import { stripAnsi } from "../lib/text.mjs";
@@ -78,6 +79,7 @@ const VALUE_OPTION_NAMES = new Set([
   "--iterations",
   "--bench-iterations",
   "--suite",
+  "--allow-command",
 ]);
 
 function extractTestTrustFlag(argv) {
@@ -528,12 +530,12 @@ function commandSessions(options) {
   }
 }
 
-function commandDoctor(options) {
+async function commandDoctor(options) {
   const cwd = resolveCwd(options);
-  const report = runDoctor({ cwd, stdout: process.stdout });
+  const report = await runDoctorAsync({ cwd, stdout: process.stdout });
   if (options.json) {
     process.stdout.write(
-      `${JSON.stringify({ summary: report.summary, checks: report.checks }, null, 2)}\n`,
+      `${JSON.stringify({ summary: report.summary, checks: report.checks, sandbox: report.sandbox }, null, 2)}\n`,
     );
   } else {
     process.stdout.write(
@@ -566,6 +568,7 @@ function publicResult(result) {
     elapsedMs: result.elapsedMs ?? result.metrics?.elapsedMs ?? null,
     metrics: result.metrics ?? {},
     plan: result.plan ?? [],
+    commands: Array.isArray(result.commands) ? result.commands : [],
     editFile: result.editFile
       ? {
           path: result.editFile.path,
@@ -609,6 +612,11 @@ async function runHeadlessTask(options, cwd) {
   const query = options.offline ? "local" : (options.modelQuery ?? "local");
   const model = resolveModel(query, { fallback: false });
   if (!model) throw new Error(`unknown model "${query}"; use --help to list supported aliases`);
+  if (options.approvedCommandPlanHash && !model.remote) {
+    throw new Error(
+      "--allow-command requires a remote tool-calling model; Local Forge never infers a command plan",
+    );
+  }
   if (model.remote && !isOpenRouterAvailable(model.id)) {
     throw new Error(
       `${model.name} needs an OpenRouter key; use Local Forge or set OPENROUTER_API_KEY`,
@@ -626,6 +634,21 @@ async function runHeadlessTask(options, cwd) {
   };
   const home = matrixHome();
   const runId = newRunId();
+  const commandCapability = options.enableCommands
+    ? {
+        enabled: true,
+        headless: true,
+        home,
+        runId,
+        // Exactly one object for this invocation, even when the provider asks
+        // for the same command twice. Edit/test approval never fills this hash.
+        policy: createCommandPolicy({
+          enabled: true,
+          headless: true,
+          approvedPlanHash: options.approvedCommandPlanHash,
+        }),
+      }
+    : null;
   // Edit approval and repository-test trust are independent decisions. In
   // headless mode even previously stored interactive trust is insufficient
   // unless an embedding caller explicitly opts into it; --allow-tests is exact-
@@ -642,7 +665,8 @@ async function runHeadlessTask(options, cwd) {
       origin: TEST_ORIGIN.MODEL,
       policy,
     },
-    () => (model.remote ? runModelAgent({ ...common, model }) : runLocalAgent(common)),
+    () =>
+      model.remote ? runModelAgent({ ...common, model, commandCapability }) : runLocalAgent(common),
   );
   const result = withTestExecutionMetadata(agentResult, lastVerification);
   const publicRun = publicResult(result);
@@ -671,6 +695,14 @@ async function runHeadlessTask(options, cwd) {
       if (result.editFile.backupPath)
         process.stdout.write(`  backup ${result.editFile.backupPath}\n`);
     }
+    for (const command of publicRun.commands) {
+      process.stdout.write(
+        `\n${paint("SANDBOX", "38;2;132;169;140")} ${command.commandStatus} · ${command.reason} · processOk=${command.processOk} · audit=${command.auditStatus} · cleanup=${command.cleanupStatus}\n`,
+      );
+      if (command.commandPlan?.planHash)
+        process.stdout.write(`  plan ${command.commandPlan.planHash}\n`);
+      process.stdout.write("  live workspace unchanged · writes discarded · undo not applicable\n");
+    }
     if (result.verifyTests) {
       const verify = result.verifyTests;
       process.stdout.write(
@@ -697,6 +729,9 @@ async function commandInteractive(options, cwd) {
     throw new Error(
       "interactive Matrix needs a TTY; pass a task for headless mode or use matrix dump/vision",
     );
+  }
+  if (options.approvedCommandPlanHash) {
+    throw new Error("--allow-command is only valid for a non-interactive headless task");
   }
   if (options.modelQuery && !options.offline) {
     const selected = resolveModel(options.modelQuery, { fallback: false });
@@ -743,6 +778,7 @@ async function commandInteractive(options, cwd) {
           initialSession: session,
           autoApprove: Boolean(options.autoApprove),
           offline: Boolean(options.offline),
+          enableCommands: Boolean(options.enableCommands),
         }),
         {
           stdout,
@@ -803,7 +839,7 @@ export async function main(argv = process.argv.slice(2)) {
     const cwd = resolveCwd(options);
     if (options.exportPng && options.command !== "vision")
       throw new Error("--png is only valid with matrix vision");
-    if (options.command === "doctor") return commandDoctor(options);
+    if (options.command === "doctor") return await commandDoctor(options);
     if (options.command === "sessions") return commandSessions(options);
     if (options.command === "vision") return commandVision(options);
     if (options.command === "smoke") return commandSmoke(options);

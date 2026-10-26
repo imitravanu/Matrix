@@ -27,6 +27,9 @@ No API key is required for the default Local Forge engine. Remote OpenRouter mod
 - **Vision** is a real pixel canvas rendered as half-block truecolor and exportable as a PNG.
 - **Swarm lanes** are three views of one real agent event stream. They are not three independent
   models running concurrently.
+- **Optional sandboxed commands** let remote models run one exact executable-plus-argv plan inside a
+  disposable Linux bubblewrap snapshot. Separate capability opt-in and one-shot approval are required;
+  network is disabled, snapshot writes are discarded, and the live workspace gets no edit or undo entry.
 - **Sessions** are saved locally with bounded newest-first transcripts, model, usage, metrics, and
   versioned `undoRun` recovery state. Resume can re-arm undo when every post-patch file still matches
   its stored fingerprint.
@@ -39,6 +42,8 @@ No API key is required for the default Local Forge engine. Remote OpenRouter mod
 - Python 3 and pytest are only required for the bundled demo and its tests. Other workspaces use
   their detected test runner.
 - `git` is optional; branch and dirty-state context is shown when available.
+- Optional sandboxed commands require Linux with `bubblewrap` and `prlimit`. Other platforms and failed
+  policy probes disable the capability; there is no unsandboxed fallback.
 
 ## Quick start
 
@@ -79,20 +84,22 @@ node bin/matrix.mjs bench --stress --suite transcript --iterations 3
 
 Useful flags:
 
-| Flag                         | Meaning                                                                                   |
-| ---------------------------- | ----------------------------------------------------------------------------------------- |
-| `-C, --cwd <dir>`            | Operate on another workspace.                                                             |
-| `--demo`                     | Use the bundled demo.                                                                     |
-| `--model <id-or-short>`      | `local`, `sonnet`, `gemini`, `gpt-mini`, `deepseek`, `qwen`, `ollama`, or `ollama/<tag>`. |
-| `--offline`                  | Force Local Forge.                                                                        |
-| `--yes`                      | Auto-approve edits. Use with care. Does not grant test trust.                             |
-| `--allow-tests`              | Allow the first exact test plan in a headless invocation; required for headless tests.    |
-| `--json`                     | Machine-readable output where supported.                                                  |
-| `--resume`, `--session <id>` | Resume a saved interactive session.                                                       |
-| `--cols <n> --rows <n>`      | Fixed geometry for `dump` and `vision`.                                                   |
-| `--png <path>`               | Export a Vision canvas as a real PNG.                                                     |
-| `--mono`, `--no-color`       | Strip colour.                                                                             |
-| `--no-alt`, `--no-sync`      | Disable alternate screen / synchronized output.                                           |
+| Flag                         | Meaning                                                                                      |
+| ---------------------------- | -------------------------------------------------------------------------------------------- |
+| `-C, --cwd <dir>`            | Operate on another workspace.                                                                |
+| `--demo`                     | Use the bundled demo.                                                                        |
+| `--model <id-or-short>`      | `local`, `sonnet`, `gemini`, `gpt-mini`, `deepseek`, `qwen`, `ollama`, or `ollama/<tag>`.    |
+| `--offline`                  | Force Local Forge.                                                                           |
+| `--yes`                      | Auto-approve edits. Use with care. Does not grant test trust.                                |
+| `--allow-tests`              | Allow the first exact test plan in a headless invocation; required for headless tests.       |
+| `--enable-commands`          | Expose the sandboxed command tool to a remote model; per-command approval is still required. |
+| `--allow-command <hash>`     | With `--enable-commands` and a remote headless task, authorize one exact command plan once.  |
+| `--json`                     | Machine-readable output where supported.                                                     |
+| `--resume`, `--session <id>` | Resume a saved interactive session.                                                          |
+| `--cols <n> --rows <n>`      | Fixed geometry for `dump` and `vision`.                                                      |
+| `--png <path>`               | Export a Vision canvas as a real PNG.                                                        |
+| `--mono`, `--no-color`       | Strip colour.                                                                                |
+| `--no-alt`, `--no-sync`      | Disable alternate screen / synchronized output.                                              |
 
 Unknown options, incomplete values, incompatible flags, invalid Vision modes, and stray positional
 arguments fail before work with a short help hint.
@@ -104,6 +111,13 @@ when the result has an error, a failure, or failed, timed-out
 or aborted verification. Interactive runs stop at the gate unless auto-approve was explicitly
 enabled. Agent runs that combine `--yes` with `--demo` are refused; copy the demo if you want to run
 an automated write against it.
+
+Sandboxed commands have an independent authority path: a remote headless task needs both
+`--enable-commands` and `--allow-command=<64 lowercase hex>`. The hash comes from the interactive
+command-approval screen and covers the exact workspace, executable, argv, cwd, and declared script
+bytes. It authorizes one invocation only; every second call is denied. `--yes`, edit auto-approval,
+`--allow-tests`, and stored test trust grant no command authority. Headless JSON includes an additive
+`commands` array with process, audit, cleanup, output-truncation, and discarded-write evidence.
 
 ## Keys
 
@@ -124,6 +138,9 @@ an automated write against it.
 | `Alt+h`                | Open help (`/help` also works).                                                        |
 | `?` / `Esc`            | Close help / close the current overlay.                                                |
 | `Ctrl+C`               | Abort an active run or `/test`; press again to quit when idle.                         |
+
+Sandbox command approval is separate from the patch gate: `y` approves once and `n`/Esc denies;
+`a` and `o` do nothing. The screen shows exact scripts and a copyable one-shot plan hash.
 
 On the main screens, printable keys always edit the prompt. Alt-modified shortcuts therefore stay
 unambiguous at normal typing speed; the patch gate, model picker and help overlay own their keys.
@@ -163,8 +180,13 @@ Ollama uses `--model ollama` or `--model ollama/<tag>` and does not require an O
 `MATRIX_API_BASE` uses `MATRIX_API_KEY`; `OPENAI_BASE_URL` uses `OPENAI_API_KEY`, preventing one
 provider's credential from being sent to another provider's origin.
 
-Remote tool calls are audited, and file writes still go through the approval gate. Arbitrary
-`run_command` shell execution is disabled because its side effects cannot be diffed or undone.
+Remote tool calls are audited, and file writes still go through the approval gate. Legacy
+`run_command` remains disabled. The optional `run_sandboxed_command` tool is different: it executes
+one exact plan in a private snapshot with no network, cleared environment, bounded resources, and
+complete decision/start/end audits. Inline/file script bytes are shown only during approval; cards,
+sessions, and audits retain hashes and redacted bounded output instead. The live workspace is never
+modified, snapshot changes are discarded, and no applied-edit or undo record is produced. Local Forge
+does not expose this tool.
 
 ## Safety model
 
@@ -176,6 +198,9 @@ Remote tool calls are audited, and file writes still go through the approval gat
   available and the file is unchanged.
 - A denied proposal is never stored as an applied patch.
 - Remote reads refuse known credential paths such as `.env*`, `.git` internals and private keys.
+- Sandboxed commands run only after exact one-shot approval in a no-network disposable snapshot. They
+  cannot create live edits or undo records, and their output is bounded and redacted. There is no
+  seccomp filter or aggregate post-exec CPU/memory/disk quota; these limits are documented, not hidden.
 - Test children receive a scrubbed environment without common credentials or loader hooks. Exact
   executable/argv/script-hash trust is required before execution; start/end audits are private and
   bounded, and retained output is redacted. This is not an OS sandbox.
@@ -246,8 +271,9 @@ development configuration, credentials, local state, generated reports, and scra
 
 Use `npm run pack:check` for a real `npm pack --dry-run --json` inspection with lifecycle scripts disabled.
 It verifies the complete file set, private/main/bin posture, and executable CLI without publishing or
-creating a tarball. [RELEASE.md](RELEASE.md) defines the full release checklist. Hosted run #3 passed
-on the hardening branch; every future release candidate still requires a fresh Node 22/24 CI pass.
+creating a tarball. [RELEASE.md](RELEASE.md) defines the full release checklist. Hosted run #4 passed
+on the hardening branch, including the default evaluation; every future release candidate still requires
+a fresh Node 22/24 CI pass.
 
 ## Limitations
 
@@ -255,4 +281,7 @@ on the hardening branch; every future release candidate still requires a fresh N
 - The swarm screen visualises one run's event stream, not independent parallel agents.
 - Local Forge is not a general code generator; use a remote model for broader work.
 - Vision's half-block canvas is portable, not native Kitty graphics. It exports real PNGs instead.
+- Sandboxed commands are Linux/bubblewrap-only. Namespaces and mounts are used, not seccomp or a VM;
+  resource limits do not provide aggregate post-exec quotas, and secret-name filtering is not content
+  classification. Snapshot writes are always discarded.
 - The demo is intentionally buggy; its initial pytest result is expected to fail.

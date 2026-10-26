@@ -140,6 +140,9 @@ test("version, help, doctor and sessions are real CLI paths", (t) => {
   assert.match(help.stdout, /USAGE/);
   assert.match(help.stdout, /matrix doctor/);
   assert.match(help.stdout, /--allow-tests/);
+  assert.match(help.stdout, /--enable-commands/);
+  assert.match(help.stdout, /--allow-command/);
+  assert.match(help.stdout, /COMMAND TRUST/);
 
   const doctor = runCli(["doctor", "--json", "--demo"], { home });
   assert.equal(doctor.status, 0, doctor.stderr);
@@ -148,6 +151,9 @@ test("version, help, doctor and sessions are real CLI paths", (t) => {
   assert.equal(report.summary.fail, 0);
   assert.ok(report.checks.some((check) => check.name === "workspace" && check.status === "ok"));
   assert.ok(report.checks.some((check) => check.name === "demo" && check.status === "ok"));
+  assert.equal(report.sandbox.probed, true);
+  assert.equal(report.sandbox.available, true, report.sandbox.reason);
+  assert.match(report.sandbox.policy.seccomp, /^none;/);
 
   const sessions = runCli(["sessions", "--json"], { home });
   assert.equal(sessions.status, 0);
@@ -181,6 +187,10 @@ test("invalid command input fails before work with a help hint", (t) => {
     ["--model", "--json"],
     ["--model", "--allow-tests"],
     ["doctor", "--allow-tests"],
+    ["doctor", "--enable-commands"],
+    ["doctor", "--enable-commands", `--allow-command=${"a".repeat(64)}`],
+    ["--enable-commands", `--allow-command=${"a".repeat(64)}`],
+    ["explain", "--enable-commands", "--allow-command", "ABC"],
     ["doctor", "extra"],
   ]) {
     const result = runCli(args, { cwd: demo.workspace, home: tempHome(t) });
@@ -400,6 +410,21 @@ test("headless test trust is separate from --yes and writes equivalent execution
   assert.equal(end.status, "verified");
   assert.equal(end.processOk, true);
   assert.equal("stdout" in end, false, "execution audits never persist process output");
+});
+
+test("allow-command refuses a silent Local Forge fallback", (t) => {
+  const demo = copyDemo("matrix-cli-command-local-");
+  t.after(() => demo.cleanup());
+  const file = join(demo.workspace, "src", "processor.py");
+  const before = readFileSync(file, "utf8");
+  const result = runCli(
+    ["inspect", "--offline", "--enable-commands", `--allow-command=${"a".repeat(64)}`, "--json"],
+    { cwd: demo.workspace, home: tempHome(t) },
+  );
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /requires a remote tool-calling model/);
+  assert.equal(result.stdout.trim(), "");
+  assert.equal(readFileSync(file, "utf8"), before);
 });
 
 test("an unknown explicit model fails before an auto-approved run", (t) => {

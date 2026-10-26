@@ -18,6 +18,7 @@ import { EmptyScreen } from "./screens/empty.mjs";
 import { ModelScreen } from "./screens/model.mjs";
 import { HelpScreen } from "./screens/help.mjs";
 import { TestTrustScreen } from "./screens/test-trust.mjs";
+import { CommandTrustScreen } from "./screens/command-trust.mjs";
 import { Header, InputBar, KeyHints, StatusBar } from "./screens/common.mjs";
 
 const h = React.createElement;
@@ -36,6 +37,9 @@ export function ScreenView({
   permissionExpanded = false,
   permissionScroll = 0,
   onPermissionBounds = null,
+  commandTrustRequest = null,
+  commandTrustScroll = 0,
+  onCommandTrustBounds = null,
   testTrustRequest = null,
   testTrustScroll = 0,
   onTestTrustBounds = null,
@@ -69,6 +73,15 @@ export function ScreenView({
   const view = normalizeViewModel(screen);
   if (view === "empty") {
     return h(EmptyScreen, { project, model, session, animTime });
+  }
+  if (view === "permission" && commandTrustRequest) {
+    return h(CommandTrustScreen, {
+      request: commandTrustRequest,
+      width,
+      height,
+      scrollOffset: commandTrustScroll,
+      onBounds: onCommandTrustBounds,
+    });
   }
   if (view === "permission" && testTrustRequest) {
     return h(TestTrustScreen, {
@@ -187,7 +200,11 @@ export function Frame(props) {
   const contentHeight = Math.max(3, height - fixed);
   const permission =
     props.permission ?? (view === "permission" && props.proposal ? props.proposal : null);
-  const waiting = view === "permission" && (permission?.status ?? "pending") === "pending";
+  const waiting =
+    view === "permission" &&
+    (Boolean(props.commandTrustRequest) ||
+      Boolean(props.testTrustRequest) ||
+      (permission?.status ?? "pending") === "pending");
 
   return h(
     Box,
@@ -200,6 +217,8 @@ export function Frame(props) {
       waiting,
       phase: live?.phase ?? "idle",
       tokenStats,
+      commandTrust: Boolean(props.commandTrustRequest),
+      testTrust: Boolean(props.testTrustRequest),
     }),
     h(
       Box,
@@ -236,6 +255,13 @@ export function Frame(props) {
       status: choice ? `decision: ${choice}` : status,
       cols,
     }),
-    h(KeyHints, { screen: view, running: Boolean(live), waiting, cols }),
+    h(KeyHints, {
+      screen: view,
+      running: Boolean(live),
+      waiting,
+      cols,
+      commandTrust: Boolean(props.commandTrustRequest),
+      testTrust: Boolean(props.testTrustRequest),
+    }),
   );
 }

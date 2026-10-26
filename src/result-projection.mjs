@@ -31,6 +31,7 @@ export function projectResult(
     editFile: normalized.editFile ?? null,
     verifyTests: verificationForTranscript(normalized.verifyTests, liveVerification),
     toolCards: normalized.toolCards ?? [],
+    commands: normalized.commands ?? [],
     summary: normalized.summary ?? "",
     ok: normalized.ok,
     status: normalized.status,

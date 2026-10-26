@@ -274,6 +274,7 @@ export function sessionSnapshot({
         : null,
       verifyTests: verificationForTranscript(message.verifyTests),
       toolCards: message.toolCards,
+      commands: message.commands ?? [],
       usage: message.usage,
       cost: message.cost ?? null,
       usageProvenance: message.usageProvenance,

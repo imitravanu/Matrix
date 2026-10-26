@@ -42,12 +42,14 @@ export function decideKeyboard(context, ch, key) {
     screen,
     inputValue,
     permission,
+    commandTrustActive,
     testTrustActive,
     permissionResolved,
     running,
     chatBounds,
     permissionBounds,
     helpBounds,
+    commandTrustBounds,
     testTrustBounds,
     slashMatchCount,
     scopeCount,
@@ -83,6 +85,24 @@ export function decideKeyboard(context, ch, key) {
     if (key.home) return absoluteScroll("help", 0);
     if (key.end) return absoluteScroll("help", maxOffset);
     if (key.escape || ch === "?" || key.return) return { type: "return-screen" };
+    return handled;
+  }
+
+  if (screen === "permission" && commandTrustActive) {
+    if (key.escape || ch === "n") return { type: "command-trust", decision: "n" };
+    if (ch === "y") return { type: "command-trust", decision: "y" };
+    const maxOffset = Math.max(
+      0,
+      commandTrustBounds.maxOffset ?? commandTrustBounds.total - commandTrustBounds.height,
+    );
+    const page = Math.max(1, commandTrustBounds.height);
+    if (key.upArrow || ch === "k") return scroll("command-trust", -1);
+    if (key.downArrow || ch === "j") return scroll("command-trust", 1, maxOffset);
+    if (key.pageUp || key.pageDown)
+      return scroll("command-trust", key.pageUp ? -page : page, maxOffset);
+    if (key.home) return absoluteScroll("command-trust", 0);
+    if (key.end) return absoluteScroll("command-trust", maxOffset);
+    // In particular, a/o cannot create a persistent or implicit command grant.
     return handled;
   }
 

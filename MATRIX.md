@@ -22,34 +22,36 @@ Matrix is built around four constraints:
 
 ## Runtime map
 
-| Area              | File                                                 | Responsibility                                                                          |
-| ----------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| CLI               | `bin/matrix.mjs`                                     | Interactive, headless, tour, dump, vision, smoke, bench, doctor, sessions.              |
-| CLI parser        | `lib/cli.mjs`                                        | Subcommands, flags, validation, help text.                                              |
-| Project index     | `lib/project.mjs`                                    | Budgeted workspace walk, language counts, test-runner detection, git context.           |
-| Structural parser | `lib/scope.mjs`                                      | Python indentation scopes; masked JS/TS brace scopes; Rust/Go/Ruby declarations.        |
-| Task layer        | `lib/task.mjs`                                       | Intent classification, candidate scoring, grounded search results.                      |
-| Local engine      | `lib/local-agent.mjs`                                | Deterministic inspect/propose/apply/verify loop.                                        |
-| Remote engine     | `lib/model-agent.mjs`, `lib/openrouter.mjs`          | Streaming OpenRouter loop, audited tools, usage accounting.                             |
-| Controller        | `lib/controller.mjs`                                 | One active run, approval lifecycle, abort, undo stack, session re-arm.                  |
-| Safety            | `lib/workspace.mjs`                                  | Path containment, atomic writes, mode preservation.                                     |
-| Diff              | `lib/diff.mjs`                                       | Line diff and hunks used by the gate and cards.                                         |
-| Process           | `lib/process.mjs`                                    | Bounded child processes, streaming output, test-result parsing.                         |
-| Sessions          | `lib/session.mjs`                                    | `MATRIX_HOME`, atomic JSON sessions, backups, run event logs.                           |
-| Application       | `src/matrix.mjs`                                     | React state/effects, controller and I/O composition; no presentational frame ownership. |
-| Presentation      | `src/frame.mjs`, `src/views.mjs`                     | `Frame`/`ScreenView`, primary/all-view routing, and shared scope-source definitions.    |
-| Interaction       | `src/keyboard.mjs`, `src/event-reducer.mjs`          | Pure keyboard decisions and React-independent run-event effect reduction.               |
-| UI projections    | `src/session-codec.mjs`, `src/result-projection.mjs` | Transcript/session, usage, retained-output, and public result projections.              |
-| Cards             | `src/cards.mjs`                                      | Pure card builders; no terminal or filesystem side effects.                             |
-| Screens           | `src/screens/*.mjs`                                  | Empty, chat, permission, swarm, scope and vision views.                                 |
-| Renderer          | `src/render.mjs`                                     | Render-only frame imports, fixed geometry, and geometry checks (`checkFrame`).          |
-| Panels            | `lib/graph.mjs`                                      | Real workspace/scope/telemetry canvases and adaptive headers.                           |
-| Raster            | `lib/raster.mjs`                                     | Pixel buffer, primitives, half-block truecolor, PNG encoder.                            |
-| Swarm state       | `lib/swarm.mjs`                                      | Projects run events into three lanes with bounded logs.                                 |
-| Doctor            | `lib/doctor.mjs`                                     | Runtime, workspace, git, test, credential, session-home and demo checks.                |
-| Credentials       | `lib/credentials.mjs`                                | One transport-free provider/key lookup shared by execution and cached UI availability.  |
-| Public contracts  | `lib/contracts.mjs`                                  | Type-only JSDoc project/result/event/controller contracts; no runtime dependency.       |
-| Engineering gates | `scripts/check-*.mjs`                                | Recursive syntax checks, fail-closed coverage ratchets, and dry-run pack inspection.    |
+| Area              | File                                                  | Responsibility                                                                           |
+| ----------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| CLI               | `bin/matrix.mjs`                                      | Interactive, headless, tour, dump, vision, smoke, bench, doctor, sessions.               |
+| CLI parser        | `lib/cli.mjs`                                         | Subcommands, flags, validation, help text.                                               |
+| Project index     | `lib/project.mjs`                                     | Budgeted workspace walk, language counts, test-runner detection, git context.            |
+| Structural parser | `lib/scope.mjs`                                       | Python indentation scopes; masked JS/TS brace scopes; Rust/Go/Ruby declarations.         |
+| Task layer        | `lib/task.mjs`                                        | Intent classification, candidate scoring, grounded search results.                       |
+| Local engine      | `lib/local-agent.mjs`                                 | Deterministic inspect/propose/apply/verify loop.                                         |
+| Remote engine     | `lib/model-agent.mjs`, `lib/openrouter.mjs`           | Streaming OpenRouter loop, audited tools, usage accounting.                              |
+| Controller        | `lib/controller.mjs`                                  | One active run, approval lifecycle, abort, undo stack, session re-arm.                   |
+| Safety            | `lib/workspace.mjs`                                   | Path containment, atomic writes, mode preservation.                                      |
+| Diff              | `lib/diff.mjs`                                        | Line diff and hunks used by the gate and cards.                                          |
+| Process           | `lib/process.mjs`                                     | Bounded child processes, streaming output, test-result parsing.                          |
+| Command policy    | `lib/command-policy.mjs`, `lib/command-execution.mjs` | Exact one-shot argv/script approval, audits, bounded results and outcome classification. |
+| Linux sandbox     | `lib/linux-bwrap.mjs`, `lib/linux-snapshot.mjs`       | Required namespaces, minimal mounts, disposable no-follow snapshots and cleanup.         |
+| Sessions          | `lib/session.mjs`                                     | `MATRIX_HOME`, atomic JSON sessions, backups, run event logs.                            |
+| Application       | `src/matrix.mjs`                                      | React state/effects, controller and I/O composition; no presentational frame ownership.  |
+| Presentation      | `src/frame.mjs`, `src/views.mjs`                      | `Frame`/`ScreenView`, primary/all-view routing, and shared scope-source definitions.     |
+| Interaction       | `src/keyboard.mjs`, `src/event-reducer.mjs`           | Pure keyboard decisions and React-independent run-event effect reduction.                |
+| UI projections    | `src/session-codec.mjs`, `src/result-projection.mjs`  | Transcript/session, usage, retained-output, and public result projections.               |
+| Cards             | `src/cards.mjs`                                       | Pure card builders; no terminal or filesystem side effects.                              |
+| Screens           | `src/screens/*.mjs`                                   | Empty, chat, permission, swarm, scope and vision views.                                  |
+| Renderer          | `src/render.mjs`                                      | Render-only frame imports, fixed geometry, and geometry checks (`checkFrame`).           |
+| Panels            | `lib/graph.mjs`                                       | Real workspace/scope/telemetry canvases and adaptive headers.                            |
+| Raster            | `lib/raster.mjs`                                      | Pixel buffer, primitives, half-block truecolor, PNG encoder.                             |
+| Swarm state       | `lib/swarm.mjs`                                       | Projects run events into three lanes with bounded logs.                                  |
+| Doctor            | `lib/doctor.mjs`                                      | Runtime, workspace, git, test, credential, session-home and demo checks.                 |
+| Credentials       | `lib/credentials.mjs`                                 | One transport-free provider/key lookup shared by execution and cached UI availability.   |
+| Public contracts  | `lib/contracts.mjs`                                   | Type-only JSDoc project/result/event/controller contracts; no runtime dependency.        |
+| Engineering gates | `scripts/check-*.mjs`                                 | Recursive syntax checks, fail-closed coverage ratchets, and dry-run pack inspection.     |
 
 The UI is split so that card construction can be tested without a terminal, and so screen
 rendering can be checked at fixed dimensions with `MATRIX_COLS`/`MATRIX_ROWS` or `checkFrame`.
@@ -105,19 +107,49 @@ general-purpose language model and does not pretend to be one.
 Remote models use the OpenRouter chat-completions API with streaming enabled. The agent exposes a
 small audited tool surface:
 
-| Tool           | Effect                                                                                      |
-| -------------- | ------------------------------------------------------------------------------------------- |
-| `list_files`   | Read-only workspace listing.                                                                |
-| `search_repo`  | Read-only literal search.                                                                   |
-| `read_file`    | Read-only bounded file read; known credential and VCS-internal paths are refused.           |
-| `propose_edit` | Builds a real validated patch; never writes by itself.                                      |
-| `write_file`   | Creates or rewrites a text file through the same proposal gate; binary targets are refused. |
-| `run_tests`    | Runs the detected executable-plus-argv test plan with a scrubbed environment.               |
+| Tool                    | Effect                                                                                      |
+| ----------------------- | ------------------------------------------------------------------------------------------- |
+| `list_files`            | Read-only workspace listing.                                                                |
+| `search_repo`           | Read-only literal search.                                                                   |
+| `read_file`             | Read-only bounded file read; known credential and VCS-internal paths are refused.           |
+| `propose_edit`          | Builds a real validated patch; never writes by itself.                                      |
+| `write_file`            | Creates or rewrites a text file through the same proposal gate; binary targets are refused. |
+| `run_tests`             | Runs the detected executable-plus-argv test plan with a scrubbed environment.               |
+| `run_sandboxed_command` | Optional remote-only exact argv execution in a disposable no-network Linux sandbox.         |
 
-Arbitrary `run_command` shell execution is **disabled** and is not advertised to the model. A legacy
-call is hard-denied without spawning a process: shell effects cannot be diffed, contained, backed up,
-or undone by Matrix. Reintroducing commands requires a separately designed explicit execution and
-sandbox policy, not a destructive-command denylist.
+Legacy arbitrary `run_command` shell execution remains **disabled** and is never advertised. A legacy
+call is hard-denied without spawning a process. The only command path is the separately designed
+`run_sandboxed_command` policy below; it is not a destructive-command denylist or a way to apply edits.
+The default six-tool schema is unchanged, and dynamic command schemas are used identically for context
+budgeting and provider requests.
+
+### Sandboxed command capability
+
+`run_sandboxed_command` requires a separate capability opt-in and exact per-command approval. Plans
+contain only `executable`, `argv`, `cwd`, optional `script`, and optional `scriptFile`; model-selected
+environment, network, backend, resource, audit, home, or lifecycle-hook options are rejected. Plan
+hashes cover canonical workspace/cwd, policy identity, resolved executable, literal argv, declared
+script hashes, and workspace-executable identity/content. `/usr` runtimes and the exact current Node
+runtime are the only host executable exceptions; other outside paths are rejected.
+
+Interactive approval creates a fresh one-shot decision for every command and displays exact argv,
+inline/file script bytes, and a copyable hash. Headless execution requires `--enable-commands` plus
+`--allow-command=<64 lowercase hex>` and keeps one policy per invocation, so an identical second call
+is denied. Edit `--yes`, test trust, and persistent command approval carry no authority.
+
+Execution uses a private no-follow workspace snapshot, never an RW bind of the live tree. Bubblewrap
+requires user/PID/IPC/network/UTS namespaces, a read-only minimal root, fresh `/dev` and procfs, cleared
+environment, bounded `/tmp`, and parent CPU/address-space/file/FD/process/output/wall limits. Network
+uses a new empty namespace with no inherited host sockets. Snapshot writes are discarded: there is no
+automatic import, applied edit, or undo record. Decision/start/end audits are mandatory and contain
+hashes/redacted metadata, not inline/file script bytes or raw environment/output. Provider cards and
+headless `commands` retain process, audit, cleanup, truncation, and discarded-write evidence.
+
+No seccomp filter or VM is claimed. There are no aggregate post-exec CPU/memory/disk quotas, host
+`/usr` contents are not hashed, and secret-name filtering is not content classification. Unsupported
+platforms or failed real probes return `unavailable`; there is no unsandboxed fallback. CLI `doctor`
+and interactive `/doctor` await `runDoctorAsync()` and its real policy probe; the compatibility
+`runDoctor()` API remains synchronous and explicitly reports the sandbox as unprobed.
 
 Repository tests require workspace and exact test-plan trust before spawning. Interactive first-use
 approval shows the resolved executable, argv, cwd, and current npm `pretest`/`test`/`posttest` scripts.
@@ -159,27 +191,28 @@ unknown dynamic-Ollama capabilities accordingly.
 
 The renderer, swarm lanes, session log and verification cards all consume the same events:
 
-| Event                                       | Meaning                                                                                       |
-| ------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `run:start`                                 | Mode, model, task and initial plan.                                                           |
-| `phase`                                     | Current phase (planning, reading, editing, applying, verifying, complete, failed, aborted).   |
-| `plan`, `plan:step`                         | Plan and per-step status updates.                                                             |
-| `thought`, `content`                        | Streaming reasoning and answer text.                                                          |
-| `tool:start`, `tool:end`                    | Audited tool lifecycle with a summary and optional card data.                                 |
-| `proposal`                                  | A validated patch with file, hunk, stats and rationale.                                       |
-| `approval:request`, `approval:result`       | The gate and its decision.                                                                    |
-| `applied`                                   | The write actually happened; includes backup path and stats.                                  |
-| `verify:start`, `verify:line`, `verify:end` | Real test execution and parsed totals.                                                        |
-| `verify:skipped`                            | No runner was detected, so verification did not happen.                                       |
-| `execution:start`, `execution:end`          | Exact test execution metadata, trust decision, and terminal status; no environment or output. |
-| `trust:decision`                            | Denied/blocked test-trust decision with safe reason metadata.                                 |
-| `usage`                                     | Provider token usage; only emitted when available.                                            |
-| `metrics`                                   | Elapsed time, rounds, tool calls and cost.                                                    |
-| `result`                                    | The final public result card.                                                                 |
-| `error`                                     | A real failure, with an aborted flag when applicable.                                         |
-| `abort:requested`                           | The user requested cancellation while a run was active.                                       |
-| `undo`                                      | Files restored by the undo stack.                                                             |
-| `done`                                      | The run is finished, whether successful, denied, failed or aborted.                           |
+| Event                                              | Meaning                                                                                        |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `run:start`                                        | Mode, model, task and initial plan.                                                            |
+| `phase`                                            | Current phase (planning, reading, editing, applying, verifying, complete, failed, aborted).    |
+| `plan`, `plan:step`                                | Plan and per-step status updates.                                                              |
+| `thought`, `content`                               | Streaming reasoning and answer text.                                                           |
+| `tool:start`, `tool:end`                           | Audited tool lifecycle with a summary and optional card data.                                  |
+| `proposal`                                         | A validated patch with file, hunk, stats and rationale.                                        |
+| `approval:request`, `approval:result`              | The gate and its decision.                                                                     |
+| `applied`                                          | The write actually happened; includes backup path and stats.                                   |
+| `verify:start`, `verify:line`, `verify:end`        | Real test execution and parsed totals.                                                         |
+| `verify:skipped`                                   | No runner was detected, so verification did not happen.                                        |
+| `execution:start`, `execution:end`                 | Exact test execution metadata, trust decision, and terminal status; no environment or output.  |
+| `command:decision`, `command:start`, `command:end` | Exact sandbox approval, execution, cleanup and audit lifecycle; no script bytes or raw output. |
+| `trust:decision`                                   | Denied/blocked test-trust decision with safe reason metadata.                                  |
+| `usage`                                            | Provider token usage; only emitted when available.                                             |
+| `metrics`                                          | Elapsed time, rounds, tool calls and cost.                                                     |
+| `result`                                           | The final public result card.                                                                  |
+| `error`                                            | A real failure, with an aborted flag when applicable.                                          |
+| `abort:requested`                                  | The user requested cancellation while a run was active.                                        |
+| `undo`                                             | Files restored by the undo stack.                                                              |
+| `done`                                             | The run is finished, whether successful, denied, failed or aborted.                            |
 
 Logs in the swarm state are bounded, so a noisy stream cannot grow the UI without limit.
 
@@ -324,7 +357,10 @@ The CLI has two modes:
 Headless edits are denied unless `--yes` is present. The process exit code and `result.ok` are
 false when the run errors or has a failure, when verification fails, times out, or is aborted. A
 denied patch is still a completed, honest run (exit 0). Remote runs without credentials fail
-honestly. Render-only commands (`tour`, `dump`, `vision`, `smoke`) never patch the working tree;
+honestly. Sandboxed headless execution separately requires `--enable-commands` and an exact
+`--allow-command` plan hash; a replay is denied. The additive `commands` result array preserves
+process, audit, cleanup, truncation, and discarded-write evidence without script bytes. Render-only
+commands (`tour`, `dump`, `vision`, `smoke`) never patch the working tree;
 `tour` and `dump` use a temporary copy of the bundled demo.
 
 ## Testing
@@ -336,6 +372,8 @@ The suite uses `node:test` and temporary directories. It covers:
 - the real Local Forge apply, deny, verify and undo path, including resumed-session undo;
 - the controller's one-run/approval/abort/undo lifecycle;
 - remote streaming and tool calls against mocked HTTP, plus honest missing-key behavior;
+- real bubblewrap namespace/mount execution and adversarial command approval, containment,
+  executable replacement, audit, cancellation, cleanup, and cross-runtime behavior;
 - raster primitives, graph data, short-canvas rendering and PNG encoding;
 - every screen at multiple dimensions, all three Vision modes, and frame-width invariants;
 - the real Ink application through `ink-testing-library`, including auto-approve lifetime,
@@ -397,6 +435,8 @@ CI and any deliberately scoped live-provider evidence remain separate from local
 - The swarm view is one run projected into three lanes, not independent parallel models.
 - Local Forge is deliberately narrow; broad code generation requires a remote model.
 - Vision uses half-block truecolor and PNG export, not the Kitty graphics protocol.
+- Sandboxed commands are Linux/bubblewrap-only and have no seccomp or aggregate post-exec quotas;
+  namespaces/mounts are not a VM, and snapshot writes never become live edits.
 - Test-runner detection covers common project manifests and falls back to honest “no runner”
   behavior.
 - Approval gates protect edits made through Matrix. They are not an OS sandbox around arbitrary

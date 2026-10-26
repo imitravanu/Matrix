@@ -21,6 +21,7 @@ reporting, and approval-gated writes before adding visual or agent capabilities.
 - Run `npm run smoke` for all screens at four terminal geometries.
 - Run `npm run bench` before and after rendering or indexing performance work.
 - Run `npm run eval` after changing agent behavior or evaluation contracts; stress and baseline updates are explicit, separate decisions.
+- Run `node --test test/command-*.test.mjs` after sandbox changes; real bubblewrap tests must not silently skip on supported Linux.
 - Run `npm run syntax` after changing module boundaries or CLI entry points; use `node --check` for quick focused checks.
 - Use `npm run format:check` for verification. Restrict `npm run format` to deliberate formatting changes.
 - Run `npm run pack:check` after changing package boundaries; it must inspect the real dry-run pack without creating a tarball.
@@ -41,6 +42,10 @@ workspaces and a temporary `MATRIX_HOME`; never intentionally modify the checked
 - Keep Local Forge useful offline. Remote integrations must fail honestly when unavailable.
 - Require exact repository/test trust before spawning. `--yes` is edit-only; headless tests need a
   dedicated `--allow-tests` decision. Preserve private bounded execution audits and redact output.
+- Keep legacy `run_command` disabled. `run_sandboxed_command` is the only command path: require separate
+  opt-in and exact one-shot approval, a no-network disposable snapshot, and complete audits. Never pass
+  model-selected environment/backend/resource/home/hooks, never create live edits or undo, and never
+  fall back to unsandboxed execution. Keep inline/file script bytes out of cards, sessions, and logs.
 - The current swarm is three projections of one event stream, not independent parallel agents. Do not
   imply otherwise until real isolated concurrency exists.
 - Keep event, transcript, process-output, and swarm collections bounded.
@@ -49,7 +54,8 @@ workspaces and a temporary `MATRIX_HOME`; never intentionally modify the checked
 
 - Printable input belongs to the prompt on main screens; never use timing to guess whether a
   printable key was a shortcut. Global main-screen shortcuts use Alt. The patch gate, model picker,
-  and help overlay own their keyboards.
+  and help overlay own their keyboards. Sandbox command approval shows exact scripts but accepts only
+  one-shot `y` and deny `n`/Esc; `a`/`o` grant nothing.
 - Read-only screen navigation remains available during active runs.
 - Use `forge.text` for primary copy, `forge.muted` for readable secondary copy, and `forge.dim` only
   for decoration. Do not reduce functional-text contrast for visual effect.

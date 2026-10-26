@@ -15,6 +15,7 @@ import { checkFrame, renderAllScreens, renderScreen, visible } from "../src/rend
 import { SlashMenu } from "../src/screens/common.mjs";
 import { HelpScreen } from "../src/screens/help.mjs";
 import { buildPermissionLines } from "../src/screens/permission.mjs";
+import { buildCommandTrustLines } from "../src/screens/command-trust.mjs";
 import { displayWidth } from "../lib/text.mjs";
 import { SLASH_COMMANDS, slashMatches } from "../lib/input.mjs";
 import { ALL_VIEW_NAMES, copyDemo, frameText, patchEnv } from "./helpers.mjs";
@@ -216,6 +217,76 @@ test("a resolved patch gate does not advertise approval actions", () => {
   ).join("\n");
   assert.match(text, /approved · f fold/);
   assert.doesNotMatch(text, /y apply|a apply all|n deny/);
+});
+
+test("command trust shows exact plans/scripts and scrolls at every required geometry", () => {
+  const request = {
+    kind: "sandboxed-command",
+    origin: "run_sandboxed_command",
+    executable: "/usr/bin/node",
+    argv: ["-e", "console.log('exact argv')"],
+    cwd: "/workspace/project",
+    workspace: "/workspace/project",
+    command: "/usr/bin/node -e \"console.log('exact argv')\"",
+    script: "const exact = 'INLINE_SCRIPT_CANARY';\nconsole.log(exact);",
+    scriptFile: {
+      path: "/workspace/project/script.mjs",
+      relative: "script.mjs",
+      sha256: "b".repeat(64),
+      content: "const fileExact = 'FILE_SCRIPT_CANARY';\nconsole.log(fileExact);",
+    },
+    planHash: "a".repeat(64),
+  };
+  const all = buildCommandTrustLines(request, 44)
+    .map((line) => line.text)
+    .join("\n");
+  for (const expected of [
+    "/usr/bin/node",
+    "argv[1]  \"console.log('exact argv')\"",
+    "/workspace/project",
+    "INLINE_SCRIPT_CANARY",
+    "FILE_SCRIPT_CANARY",
+    "network  disabled",
+    "writes discarded",
+    "undo not applicable",
+    "y approve this exact command once",
+  ]) {
+    assert.ok(all.includes(expected), `command trust omitted ${expected}`);
+  }
+  assert.ok(all.replaceAll("\n", "").includes(request.planHash));
+  assert.doesNotMatch(all, /apply all|a approve|o run once/);
+
+  for (const [columns, rows] of [
+    [40, 20],
+    [60, 22],
+    [80, 26],
+    [100, 30],
+    [140, 40],
+  ]) {
+    for (const commandTrustScroll of [0, 9999]) {
+      const ansi = renderScreen(
+        "permission",
+        { ...fixture, permission: null, commandTrustRequest: request, commandTrustScroll },
+        { columns, rows },
+      );
+      const report = checkFrame(ansi, { columns, rows });
+      assert.equal(
+        report.ok,
+        true,
+        `command trust at ${columns}×${rows}: ${report.problems.join(", ")}`,
+      );
+      assert.match(visible(ansi).join("\n"), /COMMAND TRUST/);
+      assert.doesNotMatch(visible(ansi).join("\n"), /apply all|a approve|o run once/);
+    }
+  }
+  const bottom = visible(
+    renderScreen(
+      "permission",
+      { ...fixture, permission: null, commandTrustRequest: request, commandTrustScroll: 9999 },
+      { columns: 40, rows: 20 },
+    ),
+  ).join("\n");
+  assert.match(bottom, /Ctrl\+C abort run/);
 });
 
 test("the slash menu scrolls its window instead of clamping the highlight", () => {

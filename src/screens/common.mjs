@@ -46,11 +46,19 @@ export function Header({
   waiting = false,
   phase = "idle",
   tokenStats = null,
+  commandTrust = false,
+  testTrust = false,
 }) {
   const { cols } = useLayout();
   const status = statusText({ running, waiting, phase });
   const narrow = cols < 70;
   const veryNarrow = cols < 46;
+  const screenLabel =
+    screen === "permission" && commandTrust
+      ? "COMMAND TRUST"
+      : screen === "permission" && testTrust
+        ? "TEST TRUST"
+        : (SCREEN_LABELS[screen] ?? screen);
   const modelName = model?.name ?? "Local Forge";
   const tokens = tokenStats ?? { inputTokens: 0, outputTokens: 0, cachedTokens: 0, cost: 0 };
   const provenanceLabel =
@@ -77,9 +85,7 @@ export function Header({
         h(Text, { color: forge.dim }, "/"),
         h(Text, { color: forge.text, bold: true }, "FORGE"),
         !veryNarrow ? h(Text, { color: forge.dim }, "  ") : null,
-        !veryNarrow
-          ? h(Text, { color: forge.muted }, String(SCREEN_LABELS[screen] ?? screen).toLowerCase())
-          : null,
+        !veryNarrow ? h(Text, { color: forge.muted }, String(screenLabel).toLowerCase()) : null,
       ),
       h(
         Text,
@@ -132,10 +138,13 @@ export function KeyHints({
   autoApprove = false,
   cols = 80,
   waiting = false,
+  commandTrust = false,
   testTrust = false,
 }) {
   let hint;
-  if (screen === "permission" && testTrust) {
+  if (screen === "permission" && commandTrust) {
+    hint = "y approve once · n deny · Esc deny · ↑/↓ scroll · Ctrl+C abort";
+  } else if (screen === "permission" && testTrust) {
     hint = "y trust · o run once · n deny · Esc cancel";
   } else if (screen === "permission") {
     hint = waiting
