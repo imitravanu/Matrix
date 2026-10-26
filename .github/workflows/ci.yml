@@ -47,7 +47,11 @@ jobs:
       - name: Install sandbox prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends bubblewrap util-linux
+          sudo apt-get install -y --no-install-recommends bubblewrap util-linux apparmor
+          if sudo aa-status >/dev/null 2>&1; then
+            printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' 'profile bwrap /usr/bin/bwrap flags=(unconfined) {' '  userns,' '  include if exists <local/bwrap>' '}' | sudo tee /etc/apparmor.d/bwrap >/dev/null
+            sudo apparmor_parser -r /etc/apparmor.d/bwrap
+          fi
           bwrap --version
           prlimit --version
       - name: Install npm dependencies

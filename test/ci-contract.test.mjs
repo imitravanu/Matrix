@@ -31,7 +31,11 @@ test("hosted CI uses valid isolated job environments and every release gate", ()
     assert.ok(workflow.includes(command), `missing hosted gate: ${command}`);
   }
   for (const version of ['"22"', '"24"']) assert.ok(workflow.includes(version));
-  assert.match(workflow, /apt-get install -y --no-install-recommends bubblewrap util-linux/);
+  assert.match(
+    workflow,
+    /apt-get install -y --no-install-recommends bubblewrap util-linux apparmor/,
+  );
+  assert.match(workflow, /apparmor_parser -r \/etc\/apparmor.d\/bwrap/);
   assert.match(workflow, /actions\/upload-artifact@v4/);
   assert.match(workflow, /eval\/reports\/default\.json/);
   assert.match(workflow, /permissions:\n {2}contents: read/);
