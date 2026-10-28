@@ -60,6 +60,7 @@ non-negotiable invariants.
 | `REL-001` — private package and release posture                     | **DONE** | ISC license, changelog, release checklist, and a 59-file dry-run pack allowlist preserve private/main/bin compatibility.                |
 | `CI-001` — hosted Node 22/24 engineering gate                       | **DONE** | Hosted run #3 passes clean install, static tests, hostile tests, pack, audit, smoke, and benchmarks on both versions.                   |
 | `EVAL-001` — versioned agent evaluation system                      | **DONE** | Sixteen default and one stress contracts pass locally and hosted run #4 passes the strict default baseline on Node 22/24.               |
+| `ADV-002` — OS-sandboxed command capability                         | **DONE** | Exact one-shot approval, disposable bubblewrap snapshots, dynamic model/CLI/UI integration, and hosted run #6 pass on Node 22/24.       |
 | `DIFF-001` — multi-hunk and edit-coordinate correctness             | **DONE** | Original-coordinate multi-hunk round trips and non-finite rejection.                                                                    |
 | `DIFF-002` — lossless newline and encoding behavior                 | **DONE** | Explicit EOL/EOF metadata, mixed-EOL refusal, standard marker support, and 60 deterministic round-trip fixtures.                        |
 | `PROC-001` — process-output correctness and bounds                  | **DONE** | Stream/UTF-8/long-line/noisy-summary/latest-400/direct-UI bounds and timer cleanup tests.                                               |
@@ -76,8 +77,8 @@ non-negotiable invariants.
 provider variables on Node 24; 16/16 default and 1/1 stress eval contracts; 32/32 responsive smoke checks;
 32 benchmark cases; 122 module syntax checks; 94.06% line / 84.11% branch / 94.05% function V8 coverage on
 Node 24; and zero npm-audit findings. `npm run check`, `npm run eval`, and the 64-file `npm run pack:check`
-pass locally. Hosted CI run #4 passed the complete matrix, including the strict default eval baseline,
-on both Node versions at commit `f48b661`; hosted bubblewrap validation is next.
+pass locally. Hosted CI run #6 passed the complete matrix, including strict evaluation and real
+bubblewrap execution, on both Node versions at commit `3492e5a`.
 
 ## 3. Phase summary and execution waves
 
@@ -98,8 +99,8 @@ on both Node versions at commit `f48b661`; hosted bubblewrap validation is next.
    `BENCH-001` are complete. Local and hosted Node 22/24 gates pass.
 4. **Wave D:** `REF-001`, `TOOL-001`, `DOC-002`, and `REL-001` are complete. CI passes the full
    static/test gate, package inspection, dependency audit, hostile tests, smoke, and benchmarks.
-5. **Wave E:** `EVAL-001` is complete locally and in hosted run #4. `ADV-002` core and integration
-   pass locally on Node 22/24; hosted sandbox validation is next. `ADV-001` follows that gate.
+5. **Wave E:** `EVAL-001` and `ADV-002` are complete locally and in hosted run #6. `ADV-001` is in
+   progress with bounded isolated workspaces, independent approvals, and explicit integration.
 
 Dependencies are minimum ordering, not permission to edit overlapping files concurrently.
 
@@ -432,7 +433,7 @@ on Node 22 and 24 at `f48b661`; no live-provider evidence is claimed.
 
 ### `ADV-002` — Design and implement an OS-sandboxed command capability
 
-**Priority:** P3 · **Size:** L · **Status:** IN PROGRESS
+**Priority:** P3 · **Size:** L · **Status:** DONE
 **Owns:** new execution-policy/sandbox modules and adversarial tests; do not restore legacy `run_command`
 
 - Require separate opt-in and per-command approval with exact argv/cwd/script; default to executable-plus-argv, not shell strings.
@@ -444,17 +445,45 @@ The core and integration are implemented: strict one-shot policy, disposable no-
 mandatory audits, dynamic model schemas, headless `--enable-commands`/`--allow-command`, interactive
 command-trust UI, and real async Doctor probing. All 33 core tests pass on external Node 22 and system Node 24;
 the complete gate passes 434/434 on both with 122 syntax modules. Default six-tool behavior and the eval
-baseline remain unchanged. Hosted execution with the new explicit bubblewrap setup remains before `DONE`.
+baseline remain unchanged. Hosted run #6 passed the complete matrix and real bubblewrap execution on
+Node 22 and 24 at `3492e5a`, including the targeted AppArmor setup for restricted Ubuntu.
 
 ### `ADV-001` — Implement real isolated parallel agent execution
 
-**Priority:** P3 · **Size:** L · **Status:** BLOCKED by `EVAL-001` and `ADV-002`
+**Priority:** P3 · **Size:** L · **Status:** IN PROGRESS
 **Owns:** new scheduler/worktree/conflict modules, controller protocol, swarm UI, integration tests
 
 - Use independent workspaces/worktrees, bounded scheduling, stable agent IDs, per-agent approvals, cancellation, and cleanup.
 - Detect conflicting edits and require an explicit integration/merge decision; never write concurrently to one shared file.
 - Acceptance: independent tasks actually run concurrently with resource caps; conflicts never silently overwrite;
   abort cleans every child/worktree; UI clearly distinguishes real parallel runs from the existing single-stream projection.
+
+The current working tree contains a fixed-batch scheduler, isolated copy/worktree leases, independent
+approval broker, manifest-based conflict analysis, serial approved integration, and tests using real
+controllers. Integration approvals expose exact before/after text, capped at 8 MiB. Worktree setup
+disables repository hooks; cleanup removes registered metadata even when the workspace is missing.
+Local and remote agents keep child recovery backups in private homes. Cleanup refuses recovery paths
+outside those homes.
+
+The `matrix parallel` Ink view provides per-agent status and approval, scrollable conflict review,
+final integration approval, session recovery, and separately approved combined verification. It is
+limited to Local Forge; the ordinary single-run Swarm remains a projection. The complete engineering
+gate passes 499 tests on Node 24.21.0 and 498 on Node 22.23.4; the additional submodule test also
+passes separately on Node 22. Ink tests cover 40×20 through 140×40, eight-agent choice visibility,
+reduced-motion/screen-reader output, and real batch integration.
+A real terminal check covers Ctrl+C at an agent gate.
+
+Git status now uses a private sanitized Git directory and a bounded copied index; worktrees are added
+without checkout and populated from no-follow snapshots. Parallel project discovery does not spawn Git
+status. Adversarial tests change filter configuration during setup and verify no filter or filesystem
+monitor runs. Split indexes, hidden index flags, and non-UTF-8 tracked names fail closed. Git snapshots
+include only paths tracked by the pinned commit, ignore replacement refs, and still omit known
+sensitive names. Isolation currently requires Linux; non-Git snapshots may include ignored files, and
+either snapshot can exceed its budget.
+Cancellation revokes pending integration approval even after agents settle, refuses late affirmative
+responses, interrupts pending review and combined-test trust callbacks, and awaits combined-test
+termination before cleanup. Complete broader adversarial and supported-platform acceptance checks
+before marking this task done.
 
 ## 8. Agent handoff template
 

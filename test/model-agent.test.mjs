@@ -97,6 +97,7 @@ test("a mocked OpenRouter loop reads, proposes, applies and auto-verifies", asyn
         task: TASK,
         project,
         model,
+        backupHome: join(demo.root, "isolated-model-home"),
         requestApproval: async (proposal) => {
           approvalProposal = proposal;
           return "y";
@@ -135,6 +136,8 @@ test("a mocked OpenRouter loop reads, proposes, applies and auto-verifies", asyn
     assert.ok(result.content.includes("I fixed the bounds slice."));
     assert.match(result.content, /Automatic verification/);
     assert.equal(result.editFile.status, "applied");
+    assert.ok(result.editFile.backupPath.startsWith(join(demo.root, "isolated-model-home")));
+    assert.ok(readFileSync(result.editFile.backupPath, "utf8").includes(BUGGY));
     assert.equal(result.editFile.stats.adds, 1);
     assert.equal(result.verifyTests.passed, 4);
     assert.equal(result.verifyTests.failed, 0);

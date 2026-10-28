@@ -16,6 +16,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  rmdirSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
@@ -720,6 +721,60 @@ async function runHeadlessTask(options, cwd) {
   process.exitCode = publicRun.ok ? 0 : 1;
 }
 
+async function commandParallel(options, cwd) {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    throw new Error("parallel review requires an interactive terminal");
+  }
+  const { ParallelApp } = await import("../src/parallel-app.mjs");
+  const scratchDir = mkdtempSync(join(tmpdir(), "matrix-parallel-cli-"));
+  const jobs = options.parallelTasks.map((task) => ({ task }));
+  const home = matrixHome();
+  let completion = null;
+  if (options.cols) process.env.MATRIX_COLS = String(options.cols);
+  if (options.rows) process.env.MATRIX_ROWS = String(options.rows);
+  const alt = !options.noAltScreen && isAltScreenSupported(process.stdout);
+  if (alt) enterAltScreen(process.stdout);
+  try {
+    const app = render(
+      h(ParallelApp, {
+        root: cwd,
+        home,
+        jobs,
+        scratchDir,
+        onComplete: (value) => {
+          completion = value;
+        },
+      }),
+      { stdin: process.stdin, stdout: process.stdout, exitOnCtrlC: false, patchConsole: false },
+    );
+    await app.waitUntilExit();
+  } finally {
+    if (alt) exitAltScreen(process.stdout);
+    try {
+      rmdirSync(scratchDir);
+    } catch {
+      // Retain anything left by a failed cleanup for inspection or retry.
+    }
+  }
+  if (completion?.error) throw new Error(completion.error);
+  const result = completion?.result;
+  if (result?.result?.recoverySessionId) {
+    process.stdout.write(`Recovery session: ${result.result.recoverySessionId}\n`);
+  }
+  if (result?.result?.undoRun && !result.result.recoverySessionId) {
+    process.stdout.write(
+      `Recovery was not saved. Retained backups: ${JSON.stringify(
+        result.result.undoRun.entries.map((entry) => ({
+          path: entry.file,
+          backup: entry.backupPath,
+          created: entry.isCreation,
+        })),
+      )}\n`,
+    );
+  }
+  if (result?.status !== "success") process.exitCode = 1;
+}
+
 async function commandInteractive(options, cwd) {
   if (options.demo && options.autoApprove) {
     throw new Error("refusing --yes on the bundled demo; copy demo-project and run there instead");
@@ -839,6 +894,7 @@ export async function main(argv = process.argv.slice(2)) {
     const cwd = resolveCwd(options);
     if (options.exportPng && options.command !== "vision")
       throw new Error("--png is only valid with matrix vision");
+    if (options.command === "parallel") return await commandParallel(options, cwd);
     if (options.command === "doctor") return await commandDoctor(options);
     if (options.command === "sessions") return commandSessions(options);
     if (options.command === "vision") return commandVision(options);

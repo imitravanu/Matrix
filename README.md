@@ -43,7 +43,9 @@ No API key is required for the default Local Forge engine. Remote OpenRouter mod
   their detected test runner.
 - `git` is optional; branch and dirty-state context is shown when available.
 - Optional sandboxed commands require Linux with `bubblewrap` and `prlimit`. Other platforms and failed
-  policy probes disable the capability; there is no unsandboxed fallback.
+  policy probes disable the capability; there is no unsandboxed fallback. AppArmor-restricted Ubuntu
+  may need the narrowly scoped `/usr/bin/bwrap` profile; CI loads that profile without changing the
+  global AppArmor sysctl.
 
 ## Quick start
 
@@ -63,6 +65,39 @@ The tour runs Local Forge end-to-end on a temporary copy of `demo-project`, show
 applies the fix, runs pytest, and renders the real chat, permission, swarm, scope and vision screens.
 It removes the temporary workspace when it finishes. A test run on the untouched demo reports
 `2 failed, 2 passed`; the fixed state is `4 passed`.
+
+## Parallel agents
+
+Run two to eight separate tasks in the interactive parallel Swarm view:
+
+```bash
+node bin/matrix.mjs parallel "fix the bounds bug" "inspect the parser"
+```
+
+Matrix runs independent agents in isolated workspaces, with at most two active at a time. Each edit
+and test request has its own decision. After they settle, choose a source for each conflicting path,
+review the exact before-and-after text, and separately approve integration into the original workspace.
+Combined tests require their own test-trust decision. Integrated changes remain unverified until that
+test run actually succeeds; the printed recovery session ID can be reopened with `--session <id>` for
+undo. Ctrl+C cancels active agents and cleans their isolated workspaces.
+
+The parallel command currently requires Linux and uses Local Forge; it does not accept `--yes` or
+reuse stored test trust. Git repositories must be at their top-level root, have a commit, and appear
+clean under a private sanitized Git inspection. Split indexes, hidden index flags and non-UTF-8 tracked
+names are refused. Custom Git normalization or repository/global ignore settings may cause a
+conservative refusal;
+a plain copy can be used in that case. Git metadata is unavailable to agents during parallel discovery.
+
+Both Git worktrees and non-Git copies are populated from bounded snapshots. Git snapshots include only
+paths tracked by the pinned commit, excluding submodule contents; non-Git copies can include ignored
+files. Known sensitive names
+such as `.env` are omitted in either case, but the filter is not content classification. A large
+workspace can exceed the snapshot or manifest budgets. Deletions, binary files, symlinks,
+type changes and mode changes cannot be integrated; resolve them to the original. Reviews larger than
+8 MiB are refused. The parallel Swarm shows real agent IDs and statuses; the standard single-run
+Swarm remains three projections of one agent. Use the arrow keys, Page Up/Down, Home and End to review
+the complete text; type each decision and press Enter. After cleanup, press Enter to return to the
+terminal.
 
 ## Common commands
 
@@ -271,9 +306,9 @@ development configuration, credentials, local state, generated reports, and scra
 
 Use `npm run pack:check` for a real `npm pack --dry-run --json` inspection with lifecycle scripts disabled.
 It verifies the complete file set, private/main/bin posture, and executable CLI without publishing or
-creating a tarball. [RELEASE.md](RELEASE.md) defines the full release checklist. Hosted run #4 passed
-on the hardening branch, including the default evaluation; every future release candidate still requires
-a fresh Node 22/24 CI pass.
+creating a tarball. [RELEASE.md](RELEASE.md) defines the full release checklist. Hosted run #6 passed
+on the hardening branch, including default evaluation and real bubblewrap execution; every future
+release candidate still requires a fresh Node 22/24 CI pass.
 
 ## Limitations
 

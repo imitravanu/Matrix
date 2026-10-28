@@ -78,6 +78,35 @@ an explicit freshness policy, and task/test/write/undo paths invalidate stale st
 initial detection and execution refreshes stay off the render path; non-render CLI paths may use the
 synchronous API.
 
+## Isolated parallel runs
+
+`matrix parallel` uses `src/parallel-app.mjs` for Ink review, `lib/parallel-interactive.mjs` for
+review decisions, and `lib/parallel-run.mjs` for the batch and integration lifecycle. Two to eight
+Local Forge tasks run with a maximum of two active agents, each with a private workspace, controller,
+approval broker identity, and recovery home. Isolation currently requires Linux.
+
+Git inspection copies a bounded index into a temporary private Git directory with sanitized
+configuration; it reads the real object store but does not load repository or global filter commands.
+Git replacement refs are disabled for the pinned-tree allowlist. Hooks and filesystem-monitor commands
+are disabled. Detached worktrees are added without checkout,
+their indexes are initialized without updating files, and a bounded no-follow snapshot populates each
+workspace. Parallel project discovery reports Git metadata as unavailable instead of running Git
+status against the live configuration. Tests inject filter configuration during status and worktree
+setup and verify that no filter runs.
+
+The sanitized status check can conservatively reject repositories relying on custom normalization,
+repository/global ignore rules, split indexes, hidden index flags, or non-UTF-8 tracked names. Git
+snapshots include only paths tracked by the pinned commit, excluding submodule contents. Non-Git
+snapshots may include ignored files;
+both omit known sensitive names, but name filtering is not content classification. Concurrent
+changes can invalidate a snapshot or baseline, and integration revalidates the original before writing.
+The terminal displays individual decisions, requires a choice for each conflict, and separately approves
+the exact final integration plan. Original-root writes are serialized and revalidated. A private session
+containing the undo prefix is saved after each integrated write; a save failure stops further writes and
+reports the applied prefix. Combined verification requests fresh test trust and never inherits child
+trust. Cleanup is awaited and failures are reported. The parallel Swarm is distinct from the existing
+single-stream projection; a review exceeding the display budget fails closed.
+
 ## A Local Forge run
 
 A typical task such as “fix the off-by-one in the bounds slice in src/processor.py” follows this
@@ -147,7 +176,9 @@ headless `commands` retain process, audit, cleanup, truncation, and discarded-wr
 
 No seccomp filter or VM is claimed. There are no aggregate post-exec CPU/memory/disk quotas, host
 `/usr` contents are not hashed, and secret-name filtering is not content classification. Unsupported
-platforms or failed real probes return `unavailable`; there is no unsandboxed fallback. CLI `doctor`
+platforms or failed real probes return `unavailable`; there is no unsandboxed fallback. CI loads a
+narrowly scoped `/usr/bin/bwrap` AppArmor profile on restricted Ubuntu instead of changing the global
+AppArmor sysctl. CLI `doctor`
 and interactive `/doctor` await `runDoctorAsync()` and its real policy probe; the compatibility
 `runDoctor()` API remains synchronous and explicitly reports the sandbox as unprobed.
 

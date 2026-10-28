@@ -24,10 +24,10 @@ repository tests have exact trust decisions and durable audits, and accessibilit
 Large parser, graph, raster, event, index, session-retention, and transcript-rendering work is complete.
 Orchestrator responsibilities are separated with a proven render-only dependency boundary, and the
 static/test/coverage engineering gate passes locally on Node 22 and 24. The private/internal package
-and release contracts are implemented and dry-run verified. Hosted run #4 passed the clean-checkout
-matrix and strict default evaluation on both versions, closing Phase 3 and `EVAL-001`. `ADV-002` now
-has complete local core/integration evidence; hosted bubblewrap validation is next before real isolated
-parallelism. No wholesale rewrite is recommended.
+and release contracts are implemented and dry-run verified. Hosted run #6 passed the clean-checkout
+matrix, strict evaluation, and real bubblewrap execution on both versions, closing Phase 3 and
+`ADV-002`. `ADV-001` is now the active Phase 4 gate for real isolated parallel execution. No wholesale
+rewrite is recommended.
 
 ## 2. Scope and method
 
@@ -40,29 +40,30 @@ dependencies, benchmarks, and safe temporary-workspace reproductions.
   rendering benchmarks, targeted stress probes, and `npm audit`.
 - Used mocked provider streams and fake credentials only. No live model capability, price, or
   availability claim was treated as verified.
-- Node 22.23.4 and 24.21.0 pass the complete local suite, and hosted run #4 passed the clean-checkout
-  matrix and default evaluation on both versions. Every future release candidate still requires a fresh pass.
+- Node 22.23.4 and 24.21.0 pass the complete local suite, and hosted run #6 passed the clean-checkout
+  matrix, default evaluation, and real bubblewrap execution on both versions. Every future release
+  candidate still requires a fresh pass.
 - The benchmark figures below are local measurements, not portable SLAs. Fresh-render CLI benches
   do not measure warm React updates or terminal write rates.
 
 ## 3. Current verification baseline
 
-| Check                | Current result                                                                                                       |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Complete test suite  | **434/434 passing** on local Node 22 and 24, plus **434/434** with hostile fake provider variables on Node 24        |
-| Agent evaluation     | **16/16 default and 1/1 stress contracts pass** locally and in hosted run #4 with zero safety violations             |
-| Hosted CI            | **Run #4 passed** clean install, static tests, hostile tests, eval, pack, audit, smoke, and benchmarks on Node 22/24 |
-| Engineering gate     | `npm run check` passes on Node 22 and 24, including lint, `checkJs`, formatting, and 12 coverage ratchets            |
-| Responsive smoke     | **32/32 frame checks passing** across four geometries                                                                |
-| Benchmark smoke      | **32/32 local cases passing**, with cleanup and zero active Ink/process resources                                    |
-| Package inspection   | **64 intended files** on Node 22 and 24; private/main/bin verified, no tarball or publication                        |
-| Syntax               | `node --check` passed for all 122 current `.mjs` modules                                                             |
-| V8 line coverage     | **94.06%** on Node 24                                                                                                |
-| V8 branch coverage   | **84.11%** on Node 24                                                                                                |
-| V8 function coverage | **94.05%** on Node 24                                                                                                |
-| Dependency audit     | `npm audit`: **0 vulnerabilities**                                                                                   |
-| Diff whitespace      | `git diff --check` passing                                                                                           |
-| Runtime used         | Local Node 22.23.4 and 24.21.0; hosted Node 22/24 matrix verified                                                    |
+| Check                | Current result                                                                                                                   |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Complete test suite  | **434/434 passing** on local Node 22 and 24, plus **434/434** with hostile fake provider variables on Node 24                    |
+| Agent evaluation     | **16/16 default and 1/1 stress contracts pass** locally and in hosted run #6 with zero safety violations                         |
+| Hosted CI            | **Run #6 passed** clean install, static tests, hostile tests, eval, real bwrap, pack, audit, smoke, and benchmarks on Node 22/24 |
+| Engineering gate     | `npm run check` passes on Node 22 and 24, including lint, `checkJs`, formatting, and 12 coverage ratchets                        |
+| Responsive smoke     | **32/32 frame checks passing** across four geometries                                                                            |
+| Benchmark smoke      | **32/32 local cases passing**, with cleanup and zero active Ink/process resources                                                |
+| Package inspection   | **64 intended files** on Node 22 and 24; private/main/bin verified, no tarball or publication                                    |
+| Syntax               | `node --check` passed for all 122 current `.mjs` modules                                                                         |
+| V8 line coverage     | **94.06%** on Node 24                                                                                                            |
+| V8 branch coverage   | **84.11%** on Node 24                                                                                                            |
+| V8 function coverage | **94.05%** on Node 24                                                                                                            |
+| Dependency audit     | `npm audit`: **0 vulnerabilities**                                                                                               |
+| Diff whitespace      | `git diff --check` passing                                                                                                       |
+| Runtime used         | Local Node 22.23.4 and 24.21.0; hosted Node 22/24 matrix verified                                                                |
 
 Coverage is a diagnostic, not a quality score. Terminal adapters now have direct line coverage, while
 the large application orchestrator, failure branches, and live provider/remote-Ink behavior remain
@@ -132,6 +133,7 @@ history hits, one changed-live build, and 28 visible lines. These are local refe
 | `REL-001` — define package and release posture           | **Done**               | Matrix remains a private/internal CLI at 1.0.0 with unchanged main/bin/runtime dependencies. ISC license, changelog, release checklist, and source-backed dry-run inspection verify 59 intended files on Node 22 and 24 without a tarball or publication.                                        |
 | `CI-001` — add hosted Node 22/24 CI                      | **Done**               | Hosted run #3 passes clean install, the complete static/test gate, hostile provider environments, pack inspection, dependency audit, smoke, and benchmark smoke on both versions. Invalid job contexts and two portability fixtures were fixed with regressions.                                 |
 | `EVAL-001` — add a versioned agent evaluation system     | **Done**               | Sixteen default cases and one stress case provide exact recovery, verification, retry, safety, and usage evidence with strict reviewed baselines and no unsafe actions. Hosted run #4 passes the default comparison on Node 22 and 24; no live quality claim is made.                            |
+| `ADV-002` — implement an OS-sandboxed command capability | **Done**               | Exact one-shot approval, disposable no-network snapshots, dynamic schemas, headless flags, command-trust UI, and real async Doctor probing are implemented. Hosted run #6 passes real bubblewrap execution on Node 22 and 24 with targeted AppArmor setup; legacy `run_command` stays disabled.  |
 | `DIFF-001` — repair patch application                    | **Done**               | Back-to-front hunks use original coordinates, empty-file starts work, overlap/order is checked, and non-finite edit coordinates are rejected. Multi-hunk insertion/deletion/replacement round trips pass.                                                                                        |
 | `DIFF-002` — make newline/diff behavior lossless         | **Done**               | EOL/EOF changes produce explicit metadata and whole-file review rows; mixed EOL is refused instead of silently normalized. Standard no-newline markers and 60 deterministic encoding/edit fixtures round-trip exactly.                                                                           |
 | `PROC-001` — make process output trustworthy and bounded | **Done (core path)**   | Per-stream UTF-8 decoders and line buffers preserve identity and split characters; long lines and tail captures are bounded; latest 400 lines survive; late summaries parse; direct `/test` is capped; escalation timers are cleared. Noisy-output, mixed-stream, UTF-8, and 512-KiB tests pass. |
@@ -156,9 +158,9 @@ No open P0/P1 correctness or P2 scale/accessibility findings remain in the curre
 
 ### P3 — maintainability and release readiness
 
-| Task      | Finding                                                                                                                                                                                               | Required next outcome                                                                               |
-| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `ADV-002` | **In progress.** Strict one-shot policy, disposable bubblewrap snapshots, dynamic schemas, headless flags, command-trust UI, and real async Doctor probing pass locally on Node 22/24 with 434 tests. | Require hosted bubblewrap setup and adversarial execution to pass before real isolated parallelism. |
+| Task      | Finding                                                                                                                                                                 | Required next outcome                                                                                                         |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `ADV-001` | **In progress.** Hosted run #6 closed the sandbox gate. Real isolated parallel execution now needs bounded workspaces, independent approvals, and explicit integration. | Prove concurrent isolated agents, conflict-safe original-root integration, exact recovery, and complete cancellation/cleanup. |
 
 ## 7. Accepted risks and unresolved validation boundaries
 

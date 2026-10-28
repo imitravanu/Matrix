@@ -7,6 +7,7 @@ import { Box, Text } from "ink";
 import { forge, forgeBg } from "../../lib/forge.mjs";
 import { getSwarmLayout, laneList } from "../../lib/swarm.mjs";
 import { sanitizeText, truncateToWidth } from "../../lib/text.mjs";
+import { ParallelSwarmScreen } from "./parallel-swarm.mjs";
 
 const h = React.createElement;
 
@@ -194,6 +195,7 @@ export function buildSwarmScreen(state, width, height) {
 }
 
 export function SwarmScreen({ state, width = 78, height = 20, frame = 0 }) {
+  if (state?.kind === "parallel") return h(ParallelSwarmScreen, { state, width, height });
   if (!state) {
     return h(Text, { color: forge.muted }, "No swarm state. Run a task to populate real lanes.");
   }

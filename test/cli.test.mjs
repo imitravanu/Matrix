@@ -48,6 +48,19 @@ test("parseArgv accepts commands, tasks, flags and --", () => {
   assert.match(HELP_TEXT, /y approve/);
 });
 
+test("parallel CLI takes separately quoted tasks and rejects broad approval flags", () => {
+  const parallel = parseArgv(["parallel", "fix one", "fix two", "--cwd", "/tmp/project"]);
+  assert.deepEqual(parallel.parallelTasks, ["fix one", "fix two"]);
+  assert.equal(parallel.command, "parallel");
+  const layout = parseArgv(["parallel", "one", "two", "--cols", "40", "--rows", "20", "--no-alt"]);
+  assert.equal(layout.cols, 40);
+  assert.equal(layout.rows, 20);
+  assert.equal(layout.noAltScreen, true);
+  assert.throws(() => parseArgv(["parallel", "only one"]), /two through eight/);
+  assert.throws(() => parseArgv(["parallel", "one", "two", "--yes"]), /only valid/);
+  assert.throws(() => parseArgv(["parallel", "one", "two", "--demo"]), /not valid/);
+});
+
 test("parseArgv does not treat later task words as subcommands", () => {
   const smoke = parseArgv(["fix", "smoke", "output"]);
   assert.equal(smoke.command, "interactive");

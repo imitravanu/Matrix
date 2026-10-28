@@ -3,6 +3,15 @@
 All notable changes to Matrix are recorded here. Matrix is a private/internal CLI; a version entry is
 not a claim that an npm release occurred.
 
+## Unreleased
+
+- Added an Ink Swarm review path for bounded, isolated Local Forge parallel batches, explicit conflict
+  decisions and integration, saved undo recovery, and independently approved combined verification.
+  The ordinary single-run Swarm remains a projection; parallel work remains in progress.
+- Hardened parallel Git isolation with sanitized status inspection and no-checkout worktrees populated
+  from bounded snapshots, so repository Git filters are not invoked during setup. Isolation currently
+  requires Linux and can conservatively refuse repositories with unsupported index or Git settings.
+
 ## [1.0.0] - 2026-10-26
 
 This is the initial internal baseline. The existing `1.0.0` version is retained deliberately; REL-001
@@ -35,9 +44,9 @@ establishes release hygiene without a version bump or publication.
 
 ### Validation boundaries
 
-- Local Node.js 22/24 checks do not replace the required hosted Node.js 22/24 CI matrix. Hosted run #4
-  passed on the hardening branch, including the default evaluation; every future release candidate still
-  requires a fresh pass.
+- Local Node.js 22/24 checks do not replace the required hosted Node.js 22/24 CI matrix. Hosted run #6
+  passed on the hardening branch, including default evaluation and real bubblewrap execution; every
+  future release candidate still requires a fresh pass.
 - Provider tests use mocks and isolated fake credentials. They do not validate live model availability,
   prices, context limits, tool support, latency, or output quality. Any opt-in live check must be
   reported separately with its date and scope rather than inferred from this changelog.

@@ -47,8 +47,9 @@ exact results in the release handoff. A checkbox may be marked only against evid
 - [ ] Run `npm run eval` and require every case-specific contract and the strict reviewed baseline to
       pass with zero safety violations and complete cleanup. Keep stress and baseline updates separate.
 - [ ] On Linux, install `bubblewrap` and `util-linux`, run the real command sandbox adversarial tests,
-      and require the Doctor policy probe to pass. Do not accept an unsandboxed fallback, skipped probe,
-      or hidden seccomp/aggregate-quota claim.
+      and require the Doctor policy probe to pass. On AppArmor-restricted Ubuntu, load the narrowly
+      scoped `/usr/bin/bwrap` profile instead of changing the global AppArmor sysctl. Do not accept an
+      unsandboxed fallback, skipped probe, or hidden seccomp/aggregate-quota claim.
 - [ ] Run `npm run smoke` and require all responsive frame checks to pass.
 - [ ] Run `npm run bench` and require all ordinary local benchmark cases to complete cleanly. Treat
       timings as local references, not portable performance SLAs; use explicit stress runs separately.
@@ -64,9 +65,9 @@ exact results in the release handoff. A checkbox may be marked only against evid
 - [ ] Require the hosted clean-checkout CI matrix to pass on **both Node.js 22 and Node.js 24**, including
       its normal and hostile-provider-environment gates, static/test checks, real bubblewrap execution,
       network-free agent evaluation, package inspection, dependency audit, smoke, and benchmark smoke.
-      Local Node 22/24 results are useful but do **not** satisfy this hosted-CI gate. Hosted run #4
-      passed on `matrix/engineering-hardening`, including the default evaluation; future candidates
-      still require a fresh pass.
+      Local Node 22/24 results are useful but do **not** satisfy this hosted-CI gate. Hosted run #6
+      passed on `matrix/engineering-hardening`, including default evaluation and real bubblewrap
+      execution; future candidates still require a fresh pass.
 - [ ] Review the final diff and run `git diff --check`; confirm version, changelog, license, pack size,
       and file list are intentional. Leave commits, tags, and publication to an explicit later decision.
 
