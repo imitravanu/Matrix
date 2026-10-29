@@ -5,6 +5,33 @@ import { createApprovalBroker } from "../lib/parallel-approvals.mjs";
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
+test("approval review payloads are isolated from callers and event observers", () => {
+  const source = { planHash: "approved-hash", changes: [{ updatedText: "approved content" }] };
+  const events = [];
+  const broker = createApprovalBroker({
+    batchId: "batch-review-snapshots",
+    onEvent(event) {
+      events.push(event);
+      event.request.changes[0].updatedText = "observer replacement";
+      event.request.planHash = "observer hash";
+    },
+  });
+  const issued = broker.issue({ agentId: "integration", kind: "integration", request: source });
+  source.changes[0].updatedText = "source replacement";
+  issued.request.changes[0].updatedText = "issued replacement";
+  const pending = broker.pending()[0];
+  assert.equal(pending.request.changes[0].updatedText, "approved content");
+  assert.equal(pending.request.planHash, "approved-hash");
+  pending.request.changes[0].updatedText = "pending replacement";
+  const result = broker.decide({ ...issued, decision: "y" });
+  result.request.planHash = "result replacement";
+  const inspected = broker.inspect(issued);
+  assert.equal(inspected.request.changes[0].updatedText, "approved content");
+  assert.equal(inspected.request.planHash, "approved-hash");
+  assert.equal(events.length, 2);
+  assert.equal(broker.consume(issued), true);
+});
+
 test("edit, test, command, and integration decisions remain independent one-shot authorities", async () => {
   const events = [];
   const broker = createApprovalBroker({

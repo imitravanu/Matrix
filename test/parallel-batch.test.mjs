@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { createRunController } from "../lib/controller.mjs";
@@ -19,6 +19,66 @@ function approvalIdentity(event) {
     kind: event.kind ?? "edit",
   };
 }
+
+test("batch observers cannot grant edit authority by mutating submitted jobs", async (t) => {
+  const demo = copyDemo("matrix-parallel-job-authority-");
+  const home = join(demo.root, "home");
+  const restoreEnv = patchEnv({ MATRIX_HOME: home });
+  const jobs = [{ task: TASK, autoApprove: false }];
+  const events = [];
+  const batch = createParallelBatch({
+    root: demo.workspace,
+    home,
+    scratchDir: join(demo.root, "scratch"),
+    jobs,
+    headless: true,
+    onEvent(event) {
+      if (event.type === "batch:started") jobs[0].autoApprove = true;
+      events.push(event);
+    },
+  });
+  t.after(async () => {
+    await batch.discard();
+    restoreEnv();
+    demo.cleanup();
+  });
+  const request = await waitFor(() => events.find((event) => event.type === "approval:request"));
+  assert.ok(request, "the original edit gate is still required");
+  assert.equal(batch.decide({ ...approvalIdentity(request), decision: "n" }).ok, true);
+  const result = await batch.done;
+  assert.equal(result.agents[0].result.status, "denied");
+});
+
+test("event observers cannot mutate a real agent's proposed edit", async (t) => {
+  const demo = copyDemo("matrix-parallel-observer-");
+  const home = join(demo.root, "home");
+  const restoreEnv = patchEnv({ MATRIX_HOME: home });
+  const events = [];
+  const batch = createParallelBatch({
+    root: demo.workspace,
+    batchId: "batch-observer-mutation",
+    scratchDir: join(demo.root, "scratch"),
+    home,
+    headless: true,
+    jobs: [{ task: TASK }],
+    onEvent(event) {
+      if (event.proposal) event.proposal.original = "observer replacement";
+      events.push(event);
+    },
+  });
+  t.after(async () => {
+    await batch.discard();
+    restoreEnv();
+    demo.cleanup();
+  });
+  const request = await waitFor(() => events.find((event) => event.type === "approval:request"));
+  assert.ok(request);
+  const pending = batch.pendingApprovals()[0];
+  assert.notEqual(pending.request.proposal.original, "observer replacement");
+  assert.equal(batch.decide({ ...approvalIdentity(request), decision: "y" }).ok, true);
+  const result = await batch.done;
+  assert.equal(result.agents[0].result.applied, 1);
+});
 
 test("real controllers edit sibling copies with independent gates, run IDs, fresh roots, and retained cleanup", async (t) => {
   const demo = copyDemo("matrix-parallel-gates-");
@@ -94,7 +154,12 @@ test("real controllers edit sibling copies with independent gates, run IDs, fres
   assert.equal(result.agents[0].result.status, "unverified");
   assert.equal(result.agents[1].result.status, "denied");
   assert.equal(result.integrationAvailable, true);
+  const exposed = batch.getIntegrationInput();
+  exposed.baseManifest.entries[0].path = "forged";
+  exposed.agents[0].before.entries[0].path = "forged";
   const retained = batch.getIntegrationInput();
+  assert.notEqual(retained.baseManifest.entries[0].path, "forged");
+  assert.notEqual(retained.agents[0].before.entries[0].path, "forged");
   assert.equal(retained.agents.length, 2);
   assert.ok(retained.agents.every((agent) => agent.before.complete && agent.after.complete));
   assert.ok(retained.agents.every((agent) => !("undoRun" in agent) && !("recoveryPaths" in agent)));
@@ -334,6 +399,95 @@ test("real batches use detached worktrees for a clean temporary repository witho
   );
 });
 
+test("aborting a real worktree batch removes registered worktrees and prevents queued starts", async (t) => {
+  const demo = copyDemo("matrix-parallel-worktree-abort-");
+  const home = join(demo.root, "home");
+  const restoreEnv = patchEnv({ MATRIX_HOME: home });
+  const git = (...args) =>
+    execFileSync("git", ["-C", demo.workspace, ...args], { encoding: "utf8" }).trim();
+  git("init", "-q");
+  git("config", "user.email", "matrix-fixture@example.invalid");
+  git("config", "user.name", "Matrix Fixture");
+  git("add", ".");
+  git("commit", "-q", "-m", "parallel cancellation fixture");
+  const original = readFileSync(join(demo.workspace, "src", "processor.py"));
+  const events = [];
+  const batch = createParallelBatch({
+    root: demo.workspace,
+    scratchDir: join(demo.root, "scratch"),
+    home,
+    jobs: [{ task: TASK }, { task: TASK }, { task: TASK }],
+    onEvent: (event) => events.push(event),
+  });
+  t.after(async () => {
+    await batch.discard();
+    restoreEnv();
+    demo.cleanup();
+  });
+  const ready = await waitFor(
+    () => events.filter((event) => event.type === "approval:request").length === 2,
+  );
+  assert.ok(ready, "both real worktrees reach independent edit approvals");
+  const roots = events
+    .filter((event) => event.type === "workspace:ready")
+    .map((event) => event.workspaceRoot);
+  assert.equal(roots.length, 2);
+  assert.deepEqual(
+    batch.getState().agents.map((agent) => agent.status),
+    ["running", "running", "queued"],
+  );
+  assert.equal(batch.abort(), true);
+  const result = await batch.done;
+  assert.equal(result.aborted, true);
+  assert.equal(result.cleanup.ok, true, result.cleanup.error);
+  assert.equal(result.agents[2].result.status, "aborted");
+  assert.equal(batch.pendingApprovals().length, 0);
+  assert.ok(roots.every((root) => !existsSync(root)));
+  assert.equal((git("worktree", "list", "--porcelain").match(/^worktree /gm) ?? []).length, 1);
+  assert.equal(git("status", "--porcelain"), "");
+  assert.deepEqual(readFileSync(join(demo.workspace, "src", "processor.py")), original);
+});
+
+test("aborting while real worktree setup is completing leaves no registered lease", async (t) => {
+  const demo = copyDemo("matrix-parallel-worktree-setup-abort-");
+  const home = join(demo.root, "home");
+  const restoreEnv = patchEnv({ MATRIX_HOME: home });
+  const git = (...args) =>
+    execFileSync("git", ["-C", demo.workspace, ...args], { encoding: "utf8" }).trim();
+  git("init", "-q");
+  git("config", "user.email", "matrix-fixture@example.invalid");
+  git("config", "user.name", "Matrix Fixture");
+  git("add", ".");
+  git("commit", "-q", "-m", "parallel setup cancellation fixture");
+  const events = [];
+  let batch;
+  batch = createParallelBatch({
+    root: demo.workspace,
+    scratchDir: join(demo.root, "scratch"),
+    home,
+    jobs: [{ task: TASK }, { task: TASK }, { task: TASK }],
+    onEvent(event) {
+      events.push(event);
+      if (event.type === "workspace:ready") batch.abort();
+    },
+  });
+  t.after(async () => {
+    await batch.discard();
+    restoreEnv();
+    demo.cleanup();
+  });
+  const result = await batch.done;
+  assert.equal(result.aborted, true);
+  assert.equal(result.cleanup.ok, true, result.cleanup.error);
+  assert.equal(result.agents[2].result.status, "aborted");
+  assert.equal(
+    events.some((event) => event.type === "run:start"),
+    false,
+  );
+  assert.equal((git("worktree", "list", "--porcelain").match(/^worktree /gm) ?? []).length, 1);
+  assert.equal(git("status", "--porcelain"), "");
+});
+
 test("cleanup refuses a child-supplied recovery path in the parent home", async (t) => {
   const demo = copyDemo("matrix-parallel-foreign-recovery-");
   t.after(() => demo.cleanup());
@@ -362,6 +516,69 @@ test("cleanup refuses a child-supplied recovery path in the parent home", async 
   assert.equal(cleanup.ok, false);
   assert.match(cleanup.error, /unsafe isolated recovery path/);
   assert.equal(readFileSync(otherBackup, "utf8"), "keep me");
+});
+
+test("cleanup never follows a symlink inside a child recovery directory", async (t) => {
+  const demo = copyDemo("matrix-parallel-recovery-symlink-");
+  t.after(() => demo.cleanup());
+  const home = join(demo.root, "home");
+  const outside = join(demo.root, "outside");
+  mkdirSync(outside);
+  writeFileSync(join(outside, "keep"), "keep me");
+  const batch = createParallelBatch({
+    root: demo.workspace,
+    home,
+    scratchDir: join(demo.root, "scratch"),
+    jobs: [{ task: TASK }],
+    controllerFactory(options) {
+      const backups = join(options.home, "backups");
+      mkdirSync(backups, { recursive: true });
+      symlinkSync(outside, join(backups, "linked"));
+      return {
+        start: async () => ({ ok: false, status: "unverified" }),
+        currentRun: () => null,
+        abort: () => false,
+        approve: () => false,
+        getUndoRun: () => ({ entries: [{ backupPath: join(backups, "linked", "keep") }] }),
+        clearUndo: () => {},
+        dispose: () => {},
+      };
+    },
+  });
+  await batch.done;
+  assert.equal((await batch.discard()).ok, true);
+  assert.equal(readFileSync(join(outside, "keep"), "utf8"), "keep me");
+});
+
+test("failed lease setup cleanup is reported, retained, and retried", async (t) => {
+  const demo = copyDemo("matrix-parallel-setup-cleanup-");
+  t.after(() => demo.cleanup());
+  let attempts = 0;
+  let retained;
+  const batch = createParallelBatch({
+    root: demo.workspace,
+    home: join(demo.root, "home"),
+    scratchDir: join(demo.root, "scratch"),
+    jobs: [{ task: TASK }],
+    async leaseFactory(_root, { scratchDir }) {
+      retained = join(scratchDir, "retained");
+      writeFileSync(retained, "retain until cleanup succeeds");
+      const error = new Error("lease setup failed");
+      error.cleanupError = "initial cleanup failed";
+      error.retryCleanup = async () =>
+        ++attempts === 1 ? { ok: false, error: "retry failed" } : { ok: true, error: null };
+      throw error;
+    },
+  });
+  const done = await batch.done;
+  assert.equal(done.agents[0].result.ok, false);
+  const failed = await batch.discard();
+  assert.equal(failed.ok, false);
+  assert.match(failed.error, /lease setup cleanup failed: retry failed/);
+  assert.equal(existsSync(retained), true);
+  assert.equal((await batch.discard()).ok, true);
+  assert.equal(existsSync(retained), false);
+  assert.equal(attempts, 2);
 });
 
 test("batch validation rejects inferred authorities and invalid jobs before scratch side effects", (t) => {

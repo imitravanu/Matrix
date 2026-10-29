@@ -76,10 +76,44 @@ node bin/matrix.mjs parallel "fix the bounds bug" "inspect the parser"
 
 Matrix runs independent agents in isolated workspaces, with at most two active at a time. Each edit
 and test request has its own decision. After they settle, choose a source for each conflicting path,
-review the exact before-and-after text, and separately approve integration into the original workspace.
-Combined tests require their own test-trust decision. Integrated changes remain unverified until that
-test run actually succeeds; the printed recovery session ID can be reopened with `--session <id>` for
-undo. Ctrl+C cancels active agents and cleans their isolated workspaces.
+review the exact before-and-after text, and separately approve integration into the displayed result
+workspace. The original workspace is not written by this integration. Combined tests run in the
+result workspace and require their own test-trust decision. Results remain unverified until that test
+run succeeds. The result directory is retained after agent cleanup; the recovery session belongs to
+that directory. Ctrl+C cancels active agents and cleans their isolated workspaces.
+
+Before reporting publication, Matrix checks that approved and baseline files still match the result
+that was reviewed. For non-Git results it also refuses newly generated files, because the entire
+directory is the published result. Tests that leave caches or other files can therefore prevent
+publication; Matrix reports the failure and retains the directory for inspection. Test results from
+before any detected change remain stale even if the files are restored; a fresh test decision is needed
+to establish new verification evidence. Repeated publication rechecks the files. The final screen and the shell after exit show the
+workspace, recovery and publication details.
+
+For Git projects, the final approval also names a new `matrix/parallel/...` branch. After the separate
+test decision, Matrix publishes a commit containing only the approved edits on that branch. It does
+not check out the branch or modify the original index or working files. Publication does not mean
+tests passed: denied, failed, and unverified tests keep their actual status. Non-Git results remain
+in the displayed directory. Keep the result workspace private while integration is running.
+
+Before writing, Matrix syncs an intent containing the approved before-and-after images. Reopening a
+parallel session automatically reconstructs its undo entries from that intent and the current result
+files. It refuses recovery when files diverge, the directory identity changes, or the intent is
+missing or damaged. Recovery never silently applies the remaining edits or rolls back files.
+To reconstruct a missing session after an interruption, run:
+
+```bash
+node bin/matrix.mjs recover /absolute/path/to/integration-intent.json
+node bin/matrix.mjs -C /absolute/path/to/result/workspace --session <returned-session-id>
+```
+
+The intent is next to the result workspace, and its location is printed before integration. For
+read-only inspection use `node bin/inspect-integration.mjs <intent-path>`. To retry interrupted Git
+publication, use `node bin/matrix.mjs publish <intent-path>` in an interactive terminal: it reviews
+the exact edits and destination again. A retry recognizes the same commit already published and
+refuses to replace a different existing branch. Recovery and publication retry do not claim test
+success or rerun tests. Storage corruption or unsupported filesystem durability may cause an explicit
+refusal; retained artifacts are left available for inspection.
 
 The parallel command currently requires Linux and uses Local Forge; it does not accept `--yes` or
 reuse stored test trust. Git repositories must be at their top-level root, have a commit, and appear

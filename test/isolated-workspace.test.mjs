@@ -112,6 +112,45 @@ test("copy limits fail honestly and cleanup failures are retryable without false
   assert.equal(existsSync(lease.container), false);
 });
 
+for (const kind of ["copy", "worktree"]) {
+  test(`${kind} lease retains and retries cleanup from a failed snapshot setup`, async (t) => {
+    const { workspace, scratch, home } = fixture(t, "matrix-nested-cleanup-");
+    if (kind === "worktree") initRepository(workspace);
+    let attempts = 0;
+    let retained;
+    let failure;
+    try {
+      await createIsolatedWorkspaceLease(workspace, {
+        scratchDir: scratch,
+        matrixHome: home,
+        snapshotImpl(_workspace, options) {
+          retained = join(options.scratchDir, "retained");
+          writeFileSync(retained, "retained");
+          const error = new Error("snapshot setup failed");
+          error.cleanupError = "snapshot cleanup failed";
+          error.retryCleanup = () =>
+            ++attempts === 1 ? { ok: false, error: "retry failed" } : { ok: true };
+          throw error;
+        },
+      });
+    } catch (error) {
+      failure = error;
+    }
+    assert.ok(failure);
+    assert.match(failure.cleanupError, /retry failed/);
+    assert.equal(existsSync(retained), true);
+    assert.equal(typeof failure.retryCleanup, "function");
+    assert.equal((await failure.retryCleanup()).ok, true);
+    assert.equal(existsSync(retained), false);
+    assert.equal(attempts, 2);
+    if (kind === "worktree")
+      assert.equal(
+        git(workspace, "worktree", "list", "--porcelain").match(/^worktree /gm).length,
+        1,
+      );
+  });
+}
+
 test("clean repositories get detached worktrees and cleanup removes shared metadata", async (t) => {
   const { workspace, scratch, home } = fixture(t, "matrix-worktree-");
   initRepository(workspace);
@@ -451,6 +490,30 @@ test("worktree snapshot cleanup failures are visible and retryable after Git met
   assert.equal(existsSync(lease.container), true);
   assert.equal((await lease.cleanup()).ok, true);
   assert.equal(existsSync(lease.container), false);
+});
+
+test("failed worktree setup exposes a retry when its cleanup also fails", async (t) => {
+  const { workspace, scratch, home } = fixture(t, "matrix-worktree-setup-cleanup-");
+  initRepository(workspace);
+  let attempts = 0;
+  let failure;
+  try {
+    await createIsolatedWorkspaceLease(workspace, {
+      scratchDir: scratch,
+      matrixHome: home,
+      snapshotImpl: () => ({ workspacePath: join(scratch, "missing") }),
+      cleanupSnapshotImpl: () =>
+        ++attempts === 1 ? { ok: false, error: "cleanup failed" } : { ok: true },
+    });
+  } catch (error) {
+    failure = error;
+  }
+  assert.ok(failure);
+  assert.match(failure.cleanupError, /cleanup failed/);
+  assert.equal(typeof failure.retryCleanup, "function");
+  assert.equal((await failure.retryCleanup()).ok, true);
+  assert.equal(attempts, 2);
+  assert.equal(git(workspace, "worktree", "list", "--porcelain").match(/^worktree /gm).length, 1);
 });
 
 test("private Git status refuses unstaged and staged tracked changes", async (t) => {

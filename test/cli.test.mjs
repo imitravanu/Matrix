@@ -7,6 +7,18 @@ import { HELP_TEXT, parseArgv } from "../lib/cli.mjs";
 import { formatDoctor, runDoctor, runDoctorAsync } from "../lib/doctor.mjs";
 import { copyDemo } from "./helpers.mjs";
 
+test("recovery and publication retry require one explicit intent and reject broad approval", () => {
+  for (const command of ["recover", "publish"]) {
+    const parsed = parseArgv([command, "/tmp/intent.json"]);
+    assert.equal(parsed.command, command);
+    assert.equal(parsed.recoveryIntent, "/tmp/intent.json");
+    assert.equal(parsed.task, "");
+    assert.throws(() => parseArgv([command]), /requires one/);
+    assert.throws(() => parseArgv([command, "one", "two"]), /requires one/);
+    assert.throws(() => parseArgv([command, "one", "--yes"]), /only valid/);
+  }
+});
+
 test("parseArgv accepts commands, tasks, flags and --", () => {
   const doctor = parseArgv(["doctor", "--json", "--demo"]);
   assert.equal(doctor.command, "doctor");

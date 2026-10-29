@@ -6,6 +6,7 @@ import { ParallelApp } from "../src/parallel-app.mjs";
 import { checkFrame, renderAt } from "../src/render.mjs";
 import { runParallelInteractive } from "../lib/parallel-interactive.mjs";
 import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { applyParallelSwarmEvent, createParallelSwarmState } from "../lib/parallel-swarm.mjs";
 import { parallelSwarmLines } from "../src/screens/parallel-swarm.mjs";
@@ -120,83 +121,101 @@ test("Ink parallel review scrolls complete content and submits only its active d
   assert.equal(answer, "y");
 });
 
-test("Ink parallel app completes a real isolated batch with explicit review and saved recovery", async (t) => {
-  const demo = copyDemo("matrix-ink-parallel-");
-  const home = join(demo.root, "home");
-  const restore = patchEnv({ MATRIX_HOME: home, MATRIX_COLS: "80", MATRIX_ROWS: "30" });
-  t.after(() => {
-    restore();
-    demo.cleanup();
-  });
-  const task = "Fix the off-by-one in the bounds slice in src/processor.py";
-  const runJobs = [{ task }, { task }];
-  const requests = [];
-  let captured = "";
-  let completed;
-  const run = (options) =>
-    runParallelInteractive({
-      ...options,
-      write(text) {
-        captured += text;
-        options.write(text);
-      },
-      ask(prompt) {
-        requests.push({ prompt, content: captured });
-        captured = "";
-        return options.ask(prompt);
-      },
+for (const git of [false, true])
+  test(`Ink parallel app retains the final ${git ? "Git" : "directory"} handoff`, async (t) => {
+    const demo = copyDemo("matrix-ink-parallel-");
+    const home = join(demo.root, "home");
+    const restore = patchEnv({ MATRIX_HOME: home, MATRIX_COLS: "80", MATRIX_ROWS: "30" });
+    if (git) {
+      const command = (...args) => execFileSync("git", ["-C", demo.workspace, ...args]);
+      command("init", "-q");
+      command("config", "user.name", "Fixture");
+      command("config", "user.email", "fixture@example.invalid");
+      command("add", ".");
+      command("commit", "-qm", "fixture");
+    }
+    t.after(() => {
+      restore();
+      demo.cleanup();
     });
-  const app = render(
-    React.createElement(ParallelApp, {
-      root: demo.workspace,
-      home,
-      jobs: runJobs,
-      scratchDir: join(demo.root, "scratch"),
-      run,
-      onComplete(value) {
-        completed = value;
-      },
-    }),
-  );
-  t.after(() => app.unmount());
-  for (let index = 0; index < 10 && !completed; index += 1) {
-    const ready = await waitFor(() => requests[index] || completed, {
-      timeoutMs: 15000,
-      intervalMs: 10,
-    });
-    assert.ok(ready, "the next decision or completion arrived");
-    if (completed) break;
-    const request = requests[index];
-    const promptReady = await waitFor(
-      () => frameText(app).includes(request.prompt.trim().slice(0, 25)),
-      { timeoutMs: 5000, intervalMs: 10 },
+    const task = "Fix the off-by-one in the bounds slice in src/processor.py";
+    const runJobs = [{ task }, { task }];
+    const requests = [];
+    let captured = "";
+    let completed;
+    const run = (options) =>
+      runParallelInteractive({
+        ...options,
+        write(text) {
+          captured += text;
+          options.write(text);
+        },
+        ask(prompt) {
+          requests.push({ prompt, content: captured });
+          captured = "";
+          return options.ask(prompt);
+        },
+      });
+    const app = render(
+      React.createElement(ParallelApp, {
+        root: demo.workspace,
+        home,
+        jobs: runJobs,
+        scratchDir: join(demo.root, "scratch"),
+        run,
+        onComplete(value) {
+          completed = value;
+        },
+      }),
     );
-    assert.ok(promptReady, `visible question: ${request.prompt}`);
-    assert.match(frameText(app), /REAL PARALLEL AGENTS/);
-    let choice = "y";
-    if (request.prompt.startsWith("Choose")) choice = "agent-01";
-    else if (request.prompt.startsWith("Run this") || request.content.includes(" test approval "))
-      choice = "n";
-    app.stdin.write(choice);
-    app.stdin.write("\r");
-  }
-  assert.ok(completed, "batch finished");
-  assert.equal(completed.error, null);
-  assert.equal(completed.result.result.integrationStatus, "integrated");
-  assert.equal(completed.result.status, "unverified");
-  assert.ok(completed.result.result.recoverySessionId);
-  assert.ok(
-    readFileSync(join(demo.workspace, "src", "processor.py"), "utf8").includes(
-      "bounds[0:len(bounds)]",
-    ),
-  );
-  assert.equal(
-    requests.filter((request) => request.prompt.startsWith("Approve this")).length >= 2,
-    true,
-  );
-  assert.ok(requests.some((request) => request.prompt.startsWith("Choose")));
-  assert.ok(requests.some((request) => request.prompt.startsWith("Integrate")));
-});
+    t.after(() => app.unmount());
+    for (let index = 0; index < 10 && !completed; index += 1) {
+      const ready = await waitFor(() => requests[index] || completed, {
+        timeoutMs: 15000,
+        intervalMs: 10,
+      });
+      assert.ok(ready, "the next decision or completion arrived");
+      if (completed) break;
+      const request = requests[index];
+      const promptReady = await waitFor(
+        () => frameText(app).includes(request.prompt.trim().slice(0, 25)),
+        { timeoutMs: 5000, intervalMs: 10 },
+      );
+      assert.ok(promptReady, `visible question: ${request.prompt}`);
+      assert.match(frameText(app), /REAL PARALLEL AGENTS/);
+      let choice = "y";
+      if (request.prompt.startsWith("Choose")) choice = "agent-01";
+      else if (request.prompt.startsWith("Run this") || request.content.includes(" test approval "))
+        choice = "n";
+      app.stdin.write(choice);
+      app.stdin.write("\r");
+    }
+    assert.ok(completed, "batch finished");
+    assert.equal(completed.error, null);
+    assert.equal(completed.result.result.integrationStatus, "integrated");
+    assert.equal(completed.result.status, "unverified");
+    assert.ok(completed.result.result.recoverySessionId);
+    assert.ok(await waitFor(() => frameText(app).includes("FINAL RESULT")));
+    assert.match(frameText(app), /Result workspace:/);
+    app.stdin.write("\u001b[F");
+    assert.ok(await waitFor(() => frameText(app).includes("Final status:")));
+    if (git) {
+      assert.equal(completed.result.result.publication.kind, "git");
+      assert.match(frameText(app), /Published branch:/);
+    }
+    assert.ok(
+      readFileSync(
+        join(completed.result.result.resultWorkspace, "src", "processor.py"),
+        "utf8",
+      ).includes("bounds[0:len(bounds)]"),
+    );
+    assert.equal(
+      requests.filter((request) => request.prompt.startsWith("Approve this")).length >= 2,
+      true,
+    );
+    assert.ok(requests.some((request) => request.prompt.startsWith("Choose")));
+    assert.ok(requests.some((request) => request.prompt.startsWith("Integrate")));
+  });
 
 test("eight-agent conflict choices remain visible at 40 columns in reduced-motion screen-reader mode", async (t) => {
   const restore = patchEnv({

@@ -128,3 +128,57 @@ test("all jobs and caps are validated before any executor side effect", () => {
     /maxActive/,
   );
 });
+
+test("queued jobs retain their submitted authority and task despite caller mutation", async () => {
+  const gate = deferred();
+  const jobs = [
+    { task: "first" },
+    { task: "second", autoApprove: false, allowTests: false, model: { id: "local" } },
+  ];
+  const starts = [];
+  const scheduler = createFixedBatchScheduler({ batchId: "batch-immutable-jobs", maxActive: 1 });
+  const done = scheduler.start(jobs, async (job) => {
+    starts.push(job);
+    if (job.task === "first") await gate.promise;
+    return { ok: true };
+  });
+  Object.assign(jobs[1], { task: "replacement", autoApprove: true, allowTests: true });
+  jobs[1].model.id = "other";
+  gate.resolve();
+  await done;
+  assert.deepEqual(starts[1], {
+    task: "second",
+    autoApprove: false,
+    allowTests: false,
+    model: { id: "local" },
+  });
+});
+
+test("scheduler outcomes cannot be changed by observers or state consumers", async () => {
+  const gate = deferred();
+  const scheduler = createFixedBatchScheduler({
+    batchId: "batch-immutable-outcomes",
+    maxActive: 1,
+    onEvent(event) {
+      if (event.type === "agent:settled") {
+        event.result.ok = true;
+        event.result.details.message = "observer replacement";
+      }
+      if (event.type === "batch:settled") event.agents[0].result.ok = true;
+    },
+  });
+  const done = scheduler.start([{}, {}], async (_job, context) => {
+    if (context.agentId === "agent-02") await gate.promise;
+    return { ok: false, details: { message: "failed" } };
+  });
+  await tick();
+  const state = scheduler.getState();
+  state.agents[0].result.ok = true;
+  state.agents[0].result.details.message = "consumer replacement";
+  gate.resolve();
+  const result = await done;
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.agents[0].result, { ok: false, details: { message: "failed" } });
+  result.agents[0].result.ok = true;
+  assert.equal(scheduler.getState().agents[0].result.ok, false);
+});

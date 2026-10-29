@@ -99,8 +99,9 @@ bubblewrap execution, on both Node versions at commit `3492e5a`.
    `BENCH-001` are complete. Local and hosted Node 22/24 gates pass.
 4. **Wave D:** `REF-001`, `TOOL-001`, `DOC-002`, and `REL-001` are complete. CI passes the full
    static/test gate, package inspection, dependency audit, hostile tests, smoke, and benchmarks.
-5. **Wave E:** `EVAL-001` and `ADV-002` are complete locally and in hosted run #6. `ADV-001` is in
-   progress with bounded isolated workspaces, independent approvals, and explicit integration.
+5. **Wave E:** `EVAL-001` and `ADV-002` are complete locally and in hosted run #6. `ADV-001` is complete
+   locally for Linux/Local Forge after fixing the non-Git result validation and final terminal handoff
+   defects identified in `ADV_001_REVIEW.md`. No fresh hosted result is claimed.
 
 Dependencies are minimum ordering, not permission to edit overlapping files concurrently.
 
@@ -450,8 +451,12 @@ Node 22 and 24 at `3492e5a`, including the targeted AppArmor setup for restricte
 
 ### `ADV-001` — Implement real isolated parallel agent execution
 
-**Priority:** P3 · **Size:** L · **Status:** IN PROGRESS
+**Priority:** P3 · **Size:** L · **Status:** DONE (Linux/Local Forge, review fixes verified locally 2026-10-29)
 **Owns:** new scheduler/worktree/conflict modules, controller protocol, swarm UI, integration tests
+
+Completion review reproduced two defects: non-Git publication skipped approved-result validation,
+and the final terminal handoff dropped retained destination/recovery details. Both are fixed and have
+end-to-end regressions; see `ADV_001_REVIEW.md` for the original evidence and verification.
 
 - Use independent workspaces/worktrees, bounded scheduling, stable agent IDs, per-agent approvals, cancellation, and cleanup.
 - Detect conflicting edits and require an explicit integration/merge decision; never write concurrently to one shared file.
@@ -468,8 +473,7 @@ outside those homes.
 The `matrix parallel` Ink view provides per-agent status and approval, scrollable conflict review,
 final integration approval, session recovery, and separately approved combined verification. It is
 limited to Local Forge; the ordinary single-run Swarm remains a projection. The complete engineering
-gate passes 499 tests on Node 24.21.0 and 498 on Node 22.23.4; the additional submodule test also
-passes separately on Node 22. Ink tests cover 40×20 through 140×40, eight-agent choice visibility,
+gate passes 570 tests on both Node 22.23.4 and Node 24.21.0. Ink tests cover 40×20 through 140×40, eight-agent choice visibility,
 reduced-motion/screen-reader output, and real batch integration.
 A real terminal check covers Ctrl+C at an agent gate.
 
@@ -480,10 +484,64 @@ monitor runs. Split indexes, hidden index flags, and non-UTF-8 tracked names fai
 include only paths tracked by the pinned commit, ignore replacement refs, and still omit known
 sensitive names. Isolation currently requires Linux; non-Git snapshots may include ignored files, and
 either snapshot can exceed its budget.
+Parallel integration now writes to a retained result snapshot rather than the original workspace;
+approval identifies that directory and combined tests run there. A session identifying the result is
+saved before writing, with undo prefixes saved afterward. A synced write-ahead intent records the
+approved before-and-after images; a read-only inspector reports matches, divergence, or uncertainty.
+Session loading now reconciles the durable intent to reconstruct exact undo, or refuses all recovery
+if a file diverges or the intent/root identity is invalid. `matrix recover` reconstructs a missing session.
+Git results publish the approved edits to a unique branch using a private index, filtered-command-free
+object creation, and expected-absent ref updates. `matrix publish` supports explicitly reviewed,
+idempotent retry after interruption. Verification status stays separate from publication.
+Manifest scans, integration, and integration-session restore and undo use pinned, no-follow traversal; scans stop
+enumerating at their entry budget and detect changed directory identity. Tests cover parent
+symlink swaps, moved directories, writer failure after rename, and retained recovery. New files are
+installed without overwriting an existing path. An existing result file can still race the last validation
+and atomic rename, which is not a compare-and-swap; the original workspace is not the write target.
+Approval payloads and published edit proposals are copied so observers cannot mutate the stored review
+or a running agent's proposal. Job inputs and scheduler outcomes are also copied to preserve queued
+authority and truthful results against caller and observer mutation.
+Retained manifests are copied, conflict analysis is checked before planning, and complete plans are
+bound to their original hash and copied before execution; observers cannot alter recovery records.
+Cleanup removes private child homes as part of their batch container without following child-supplied
+backup paths; an adversarial symlink test verifies outside files remain untouched. Failed lease-setup
+cleanup is retained, reported, and retried before the batch container is removed.
+Snapshot setup failures retain and retry their own cleanup through both copy and worktree leases.
+Snapshot cleanup pins directories before changing permissions; file opens used for snapshot, manifest,
+Git-index and integration undo revalidation are nonblocking against FIFO substitution.
+Integration undo restores the original text recorded in the session even if its backup is altered;
+backup deletion is restricted to its pinned private directory.
 Cancellation revokes pending integration approval even after agents settle, refuses late affirmative
 responses, interrupts pending review and combined-test trust callbacks, and awaits combined-test
-termination before cleanup. Complete broader adversarial and supported-platform acceptance checks
-before marking this task done.
+termination before cleanup. Cancellation between integration writes retains and persists the applied
+recovery prefix. Real Git-worktree tests cover cancellation at approval and during setup, including
+queued-agent suppression and registered-worktree cleanup.
+
+The approved workflow change is explicit: integration publishes a separate result instead of merging
+into live working files. Original working-file writes, automatic checkout, remote parallel models, and
+non-Linux isolation are not part of this completed scope. Result directories belong to the user after
+integration and are deliberately retained on cancellation or partial failure for recovery. The internal
+writer requires exclusive ownership of its private destination; it does not claim filesystem content
+compare-and-swap against arbitrary same-user writers.
+
+Final gate evidence after review fixes (Node versions checked sequentially):
+
+| Check                           | Result                                                                                                                      |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `npm run check`, Node 24.21.0   | 570 passed, 0 failed, 0 skipped; syntax/lint/types/format/coverage passed                                                   |
+| `npm run check`, Node 22.23.4   | 570 passed, 0 failed, 0 skipped; syntax/lint/types/format/coverage passed                                                   |
+| Sandbox execution               | Real Linux bubblewrap tests passed inside both engineering gates                                                            |
+| `npm run smoke`                 | 32 frames across four geometries passed                                                                                     |
+| `npm run eval`                  | 16 contract passes, 0 safety violations, complete fixture cleanup                                                           |
+| `npm run pack:check`            | 81 intended files; private package boundary passed; nothing published                                                       |
+| Real terminal publication retry | Exact approval created a branch while preserving HEAD and original files                                                    |
+| Recovery subprocess             | Exit immediately after a write; reopening reconstructs exact undo; later divergence refuses                                 |
+| Git publication                 | SHA-1/SHA-256, exact bytes, original index/HEAD preservation, hostile hooks/filters, occupied refs and restart retry passed |
+| Non-Git result drift            | Passing tests that modify approved files, baseline files or add files cannot publish a successful result                    |
+| Terminal final handoff          | Real alternate-screen exit tests pass for Git and non-Git; shell retains workspace, recovery and publication details        |
+
+The earlier sandbox namespace exhaustion was transient; both final full runs exercised the real
+sandbox successfully. These are local results, not fresh hosted CI or live remote-provider evidence.
 
 ## 8. Agent handoff template
 

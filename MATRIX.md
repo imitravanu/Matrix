@@ -84,6 +84,10 @@ synchronous API.
 review decisions, and `lib/parallel-run.mjs` for the batch and integration lifecycle. Two to eight
 Local Forge tasks run with a maximum of two active agents, each with a private workspace, controller,
 approval broker identity, and recovery home. Isolation currently requires Linux.
+Approval review payloads and published edit proposals are independent snapshots, so observers cannot
+alter the stored review or an agent's proposed edit by mutating an event.
+Submitted jobs and scheduler results are also copied: later changes by callers or event observers
+cannot grant a queued job new authority or rewrite an agent's recorded outcome.
 
 Git inspection copies a bounded index into a temporary private Git directory with sanitized
 configuration; it reads the real object store but does not load repository or global filter commands.
@@ -99,13 +103,58 @@ repository/global ignore rules, split indexes, hidden index flags, or non-UTF-8 
 snapshots include only paths tracked by the pinned commit, excluding submodule contents. Non-Git
 snapshots may include ignored files;
 both omit known sensitive names, but name filtering is not content classification. Concurrent
-changes can invalidate a snapshot or baseline, and integration revalidates the original before writing.
+changes can invalidate a snapshot or baseline. A private result snapshot must match the captured base
+before integration starts; omitted sensitive files or other differences cause a conservative refusal.
+Manifest traversal uses no-follow directory descriptors, checks directory identity, and stops reading
+once its entry budget is exceeded; a directory changed during scanning makes the manifest incomplete.
 The terminal displays individual decisions, requires a choice for each conflict, and separately approves
-the exact final integration plan. Original-root writes are serialized and revalidated. A private session
-containing the undo prefix is saved after each integrated write; a save failure stops further writes and
-reports the applied prefix. Combined verification requests fresh test trust and never inherits child
+the exact final integration plan including its result directory. Writes are serialized into that private
+directory rather than the original workspace. A session identifying the directory is saved before writes,
+and the undo prefix is saved after each write; a save failure stops further writes and reports the applied
+prefix. Before the first write, a private intent stores the approved before-and-after images and is
+synced together with its parent directory. The read-only inspection command compares current files
+against these images without claiming that matching bytes prove how they were produced. Session loading
+reconciles the intent, checks its saved fingerprint and workspace inode, and rebuilds exact undo for
+postimages that remain present. Baseline matches are omitted. Any divergent or uncertain entry refuses
+the whole recovery instead of exposing a stale prefix. `matrix recover` reconstructs a missing session;
+neither operation changes project files. Legacy intents without workspace identity remain inspectable
+but cannot automatically arm undo.
+
+For Git projects, approval binds the pinned base, repository identity, and a unique publication ref.
+After the combined test decision, publication builds objects from approved text through a private index
+and configuration using `hash-object --no-filters`, `update-index --index-info`, and `commit-tree`.
+The live index and working files are untouched. Hooks, signing, filters, replacement refs, ambient Git
+configuration, and filesystem monitors do not participate in object creation. Only the final ref
+operation uses the source repository, with hooks and filesystem monitors disabled. An expected-absent
+`update-ref --no-deref` refuses occupied refs. Fixed commit metadata makes retries deterministic;
+`matrix publish` requires a new exact review and recognizes an identical already-published commit.
+Publication validates approved and baseline paths after tests; generated scratch files are not committed.
+Test failure remains failure even if the approved commit is published. There is no automatic checkout.
+Directory publication verifies the complete result inventory, including refusing new entries that
+would otherwise become part of the published directory. If files differ or cannot be inventoried,
+publication fails, the result is retained, and earlier verification is marked stale. The final summary
+is displayed after the last decision and printed again when Ink exits, with safe shell quoting for the
+resume command.
+Integration reads and writes traverse held parent directories without following
+symlinked ancestors; integration session restore and undo also require their workspace root and use pinned traversal. If a
+parent moves during undo, the operation reports failure and retains the backup for inspection. New files
+are installed atomically without replacing an existing path. Existing files in a result directory can
+still change between their last validation and the atomic rename; there is no atomic compare-and-swap.
+Combined verification runs in the result directory, requests fresh test trust and never inherits child
 trust. Cleanup is awaited and failures are reported. The parallel Swarm is distinct from the existing
 single-stream projection; a review exceeding the display budget fails closed.
+Retained manifests are returned as snapshots. Conflict analysis and complete integration plans are
+checked for mutation, and approved execution and recovery records are isolated from observer changes.
+Integration undo uses the exact original text recorded in its recovery session, even if its backup file
+is subsequently changed. Backup cleanup is restricted to the private backup directory and pins its
+parent before removing a file.
+Cancellation during serial integration stops further writes and saves the completed undo prefix.
+Child recovery files are removed with their private batch container; individual child-supplied backup
+paths are never followed during cleanup. A failed lease-setup cleanup retains its batch container and
+exposes a retry instead of reporting successful cleanup. Nested snapshot-setup cleanup is retried
+before the lease container is removed.
+Snapshot cleanup pins each directory before restoring its permissions. Snapshot, manifest, Git index,
+and integration-undo file opens are nonblocking and reject a file replaced with a FIFO.
 
 ## A Local Forge run
 

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { runParallelInteractive } from "../lib/parallel-interactive.mjs";
 import { loadSession } from "../lib/session.mjs";
@@ -42,13 +42,17 @@ test("interactive review independently approves agents, resolves conflicts and d
   assert.match(output, /agent-02.*edit approval/);
   assert.match(output, /Conflict: "src\/processor.py"/);
   assert.match(output, /Combined test trust/);
+  assert.match(output, /Result workspace:/);
   assert.ok(prompts.some((prompt) => prompt.startsWith("Integrate")));
   assert.ok(
-    readFileSync(join(demo.workspace, "src", "processor.py"), "utf8").includes(
+    readFileSync(join(result.result.resultWorkspace, "src", "processor.py"), "utf8").includes(
       "bounds[0:len(bounds)]",
     ),
   );
-  const saved = loadSession(result.result.recoverySessionId, { home, cwd: demo.workspace });
+  const saved = loadSession(result.result.recoverySessionId, {
+    home,
+    cwd: result.result.resultWorkspace,
+  });
   assert.equal(saved.undoRun.entries.length, 1);
 });
 
@@ -76,6 +80,46 @@ test("cancellation while waiting for an agent decision leaves the original untou
   });
   assert.equal(result.status, "aborted");
   assert.deepEqual(readFileSync(join(demo.workspace, "src", "processor.py")), original);
+});
+
+test("a review output failure after integration still returns the retained recovery location", async (t) => {
+  const demo = copyDemo("matrix-interactive-trust-error-");
+  const home = join(demo.root, "home");
+  const restore = patchEnv({ MATRIX_HOME: home });
+  t.after(() => {
+    restore();
+    demo.cleanup();
+  });
+  let output = "";
+  let failedOnce = false;
+  const result = await runParallelInteractive({
+    root: demo.workspace,
+    home,
+    scratchDir: join(demo.root, "scratch"),
+    jobs: [
+      { task: TASK, autoApprove: true },
+      { task: TASK, autoApprove: true },
+    ],
+    write: (text) => {
+      if (!failedOnce && text.startsWith("Combined verification:")) {
+        failedOnce = true;
+        throw new Error("terminal output failed");
+      }
+      output += text;
+    },
+    ask: async (prompt) => {
+      if (prompt.startsWith("Choose")) return "agent-01";
+      if (prompt.startsWith("Integrate")) return "y";
+      return "n";
+    },
+  });
+  assert.equal(result.status, "failed");
+  assert.equal(result.result.error, "terminal output failed");
+  assert.ok(existsSync(result.result.resultWorkspace));
+  assert.ok(result.result.recoverySessionId);
+  assert.match(output, /FINAL RESULT/);
+  assert.match(output, /Recovery session:/);
+  assert.match(output, /terminal output failed/);
 });
 
 test("denying final integration preserves the original even after child edits were approved", async (t) => {

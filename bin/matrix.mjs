@@ -23,6 +23,7 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { parseArgv, HELP_TEXT } from "../lib/cli.mjs";
+import { formatParallelSummary } from "../lib/parallel-summary.mjs";
 import { detectProject, readFileSafe } from "../lib/project.mjs";
 import { resolveInside } from "../lib/workspace.mjs";
 import { parseScopes } from "../lib/scope.mjs";
@@ -39,6 +40,7 @@ import {
   listSessions,
   matrixHome,
   newRunId,
+  recoverIntegrationSession,
 } from "../lib/session.mjs";
 import { createTestPolicy, TEST_ORIGIN, withTestExecutionContext } from "../lib/test-policy.mjs";
 import { createCommandPolicy } from "../lib/command-policy.mjs";
@@ -758,20 +760,7 @@ async function commandParallel(options, cwd) {
   }
   if (completion?.error) throw new Error(completion.error);
   const result = completion?.result;
-  if (result?.result?.recoverySessionId) {
-    process.stdout.write(`Recovery session: ${result.result.recoverySessionId}\n`);
-  }
-  if (result?.result?.undoRun && !result.result.recoverySessionId) {
-    process.stdout.write(
-      `Recovery was not saved. Retained backups: ${JSON.stringify(
-        result.result.undoRun.entries.map((entry) => ({
-          path: entry.file,
-          backup: entry.backupPath,
-          created: entry.isCreation,
-        })),
-      )}\n`,
-    );
-  }
+  process.stdout.write(formatParallelSummary(result));
   if (result?.status !== "success") process.exitCode = 1;
 }
 
@@ -895,6 +884,40 @@ export async function main(argv = process.argv.slice(2)) {
     if (options.exportPng && options.command !== "vision")
       throw new Error("--png is only valid with matrix vision");
     if (options.command === "parallel") return await commandParallel(options, cwd);
+    if (options.command === "recover") {
+      const recovery = recoverIntegrationSession(resolve(cwd, options.recoveryIntent));
+      process.stdout.write(`${JSON.stringify(recovery, null, 2)}\n`);
+      return;
+    }
+    if (options.command === "publish") {
+      if (!process.stdin.isTTY || !process.stdout.isTTY)
+        throw new Error("publication retry requires an interactive terminal");
+      const { createInterface } = await import("node:readline/promises");
+      const { readIntegrationIntent, integrationIntentFingerprint } =
+        await import("../lib/integration-intent.mjs");
+      const { publishIntegrationIntent } = await import("../lib/integration-publication.mjs");
+      const intentPath = resolve(cwd, options.recoveryIntent);
+      const intent = readIntegrationIntent(intentPath);
+      if (!intent.publication) throw new Error("This result has no Git publication target");
+      process.stdout.write(
+        `${JSON.stringify({ destination: intent.publication, changes: intent.entries.map(({ path, original, updatedText }) => ({ path, original, updatedText })) }, null, 2)}\nVerification is not rerun or claimed by this publication retry.\n`,
+      );
+      const reader = createInterface({ input: process.stdin, output: process.stdout });
+      try {
+        if (
+          (await reader.question("Publish these exact edits to this new branch? [y/N] ")).trim() !==
+          "y"
+        )
+          return;
+        const published = publishIntegrationIntent(intentPath, {
+          expectedFingerprint: integrationIntentFingerprint(intent),
+        });
+        process.stdout.write(`${JSON.stringify(published, null, 2)}\n`);
+      } finally {
+        reader.close();
+      }
+      return;
+    }
     if (options.command === "doctor") return await commandDoctor(options);
     if (options.command === "sessions") return commandSessions(options);
     if (options.command === "vision") return commandVision(options);
