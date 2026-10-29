@@ -263,10 +263,14 @@ does not expose this tool.
 - The exact original bytes are backed up before an approved write.
 - Undo validates that the current file still matches the post-patch fingerprint. If it does not,
   undo refuses rather than overwriting someone else's work.
+- Undo checks the workspace identity, refuses symlinked parent paths, and verifies backup contents
+  against a saved fingerprint. A mismatch leaves recovery available. This anchored undo currently
+  requires Linux; other platforms refuse undo and session re-arming rather than perform unsafe writes.
 - Session resume re-arms undo only when both the backup or stored original and the fingerprint are
   available and the file is unchanged.
 - A denied proposal is never stored as an applied patch.
-- Remote reads refuse known credential paths such as `.env*`, `.git` internals and private keys.
+- Remote reads and repository search refuse known credential paths such as `.env*`, credential files,
+  `.git` internals and private keys. On Linux, search also pins parent directories and refuses links.
 - Sandboxed commands run only after exact one-shot approval in a no-network disposable snapshot. They
   cannot create live edits or undo records, and their output is bounded and redacted. There is no
   seccomp filter or aggregate post-exec CPU/memory/disk quota; these limits are documented, not hidden.

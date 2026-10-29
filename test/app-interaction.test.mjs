@@ -227,11 +227,13 @@ test("a real patch gate applies, verifies, saves, resumes and undoes", async (t)
   );
   assert.equal(saved.lastPatch, null, "new sessions persist only the versioned run record");
   assert.equal(saved.undoRun?.version, 1);
+  assert.match(saved.undoRun?.rootIdentity ?? "", /^\d+:\d+$/);
   assert.equal(saved.undoRun?.entries.length, 1);
   const savedEntry = saved.undoRun?.entries[0];
   assert.equal(savedEntry?.file, "src/processor.py");
   assert.equal(savedEntry?.updatedText, fixed, "resume needs the exact post-patch fingerprint");
   assert.equal(savedEntry?.original, before, "session undo needs the original bytes too");
+  assert.match(savedEntry?.originalHash ?? "", /^[a-f0-9]{64}$/);
   assert.equal(savedEntry?.isCreation, false);
   assert.ok(savedEntry?.backupPath);
   const finalMessage = saved.history.at(-1);

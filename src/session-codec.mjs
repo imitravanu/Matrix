@@ -159,6 +159,7 @@ function undoRunSnapshot(undoRun) {
   return {
     version: 1,
     runId: undoRun.runId ?? null,
+    rootIdentity: undoRun.rootIdentity ?? null,
     entries: undoRun.entries.map((entry) => ({
       file: entry.file,
       absPath: entry.absPath,
@@ -166,6 +167,7 @@ function undoRunSnapshot(undoRun) {
       stats: entry.stats ?? { adds: 0, dels: 0 },
       backupPath: entry.backupPath ?? null,
       original: entry.original ?? null,
+      originalHash: entry.originalHash ?? null,
       updatedText: entry.updatedText,
       isCreation: Boolean(entry.isCreation),
       appliedAt: entry.appliedAt ?? null,

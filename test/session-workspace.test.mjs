@@ -512,6 +512,9 @@ test("resolveInside allows descendants and rejects traversal, absolute escapes a
   symlinkSync("/etc/passwd", join(root, "escape"));
   assert.equal(resolveInside(root, "escape").ok, false);
   assert.equal(resolveInside(root, "").ok, false);
+  const missingRoot = join(root, "missing-workspace");
+  assert.equal(resolveInside(missingRoot, "new/file.txt").ok, true);
+  assert.equal(resolveInside(missingRoot, "../outside.txt").ok, false);
 });
 
 test("writeFileAtomic preserves an existing mode and leaves no temp files", (t) => {

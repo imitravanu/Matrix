@@ -304,6 +304,13 @@ done`, so `done` is always last and final metrics are available before persisten
 
 ## Approval and undo invariants
 
+Ordinary and integration undo use pinned Linux parent-directory traversal, verify workspace identity,
+and refuse symlinked ancestors. Ordinary recovery fingerprints original bytes and verifies backups
+before any file is restored; legacy records without a fingerprint are re-armed only when their stored
+original matches the backup. Non-Linux undo and session re-arming currently refuse safely because the
+pinned traversal backend is Linux-only. Remote search applies the sensitive-path read policy before
+opening candidates and pins Linux search parents rather than trusting the original inventory.
+
 The safety rules are enforced in code, not just in documentation:
 
 - A requested path is resolved inside the workspace. Traversal and symlink escapes are rejected.

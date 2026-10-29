@@ -1,6 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -1010,6 +1018,56 @@ test("remote read_file refuses sensitive files without forwarding their contents
     for (const request of requests) {
       assert.equal(JSON.stringify(request.body).includes("canary-value"), false);
     }
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test("remote search excludes sensitive names and indexed paths replaced by symlinks", async (t) => {
+  const demo = copyDemo();
+  t.after(() => demo.cleanup());
+  writeFileSync(join(demo.workspace, "credentials.json"), '{"token":"secret-canary"}\n');
+  const ordinary = join(demo.workspace, "ordinary.txt");
+  writeFileSync(ordinary, "token benign\n");
+  const project = detectProject(demo.workspace);
+  const outside = join(demo.root, "outside.txt");
+  writeFileSync(outside, "token outside-canary\n");
+  rmSync(ordinary);
+  symlinkSync(outside, ordinary);
+  const previousFetch = globalThis.fetch;
+  const { fetchMock, requests } = fakeOpenRouter([
+    () => sseResponse(toolCallChunks("search", "search_repo", { query: "token" })),
+    () =>
+      sseResponse(
+        toolCallChunks("edit", "propose_edit", {
+          path: "credentials.json",
+          start_line: 1,
+          end_line: 2,
+          replacement: "changed\n",
+        }),
+      ),
+    () =>
+      sseResponse(
+        toolCallChunks("write", "write_file", {
+          path: "credentials.json",
+          content: "changed\n",
+        }),
+      ),
+    () => sseResponse(contentChunks("done")),
+  ]);
+  globalThis.fetch = fetchMock;
+  try {
+    await withEnv({ OPENROUTER_API_KEY: "test-key" }, () =>
+      runModelAgent({ task: "find token", project, model: resolveModel("sonnet") }),
+    );
+    const messages = JSON.stringify(requests);
+    assert.equal(messages.includes("secret-canary"), false);
+    assert.equal(messages.includes("outside-canary"), false);
+    assert.equal(requests.length, 4);
+    assert.equal(
+      readFileSync(join(demo.workspace, "credentials.json"), "utf8"),
+      '{"token":"secret-canary"}\n',
+    );
   } finally {
     globalThis.fetch = previousFetch;
   }

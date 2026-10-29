@@ -1,6 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 
 import { createRunController } from "../lib/controller.mjs";
@@ -320,6 +329,7 @@ test("restored session undo writes the backup's exact non-UTF-8 bytes", (t) => {
       absPath: file,
       updatedText,
       original: "fallback text",
+      originalHash: createHash("sha256").update(original).digest("hex"),
       backupPath: backup.path,
       file: "processor.py",
     },
@@ -331,6 +341,119 @@ test("restored session undo writes the backup's exact non-UTF-8 bytes", (t) => {
   assert.deepEqual(readFileSync(file), original);
 });
 
+test("undo refuses replaced parent directories for restored and newly created files", (t) => {
+  const root = makeTempDir("matrix-undo-parent-");
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const workspace = join(root, "workspace");
+  const source = join(workspace, "src");
+  mkdirSync(source, { recursive: true });
+  for (const creation of [false, true]) {
+    const file = join(source, "file.txt");
+    writeFileSync(file, "after\n");
+    const controller = createController({ home: join(root, "home") });
+    assert.equal(
+      controller.restoreFromSession(
+        {
+          version: 1,
+          runId: "run-parent",
+          entries: [
+            {
+              file: "src/file.txt",
+              absPath: file,
+              original: "before\n",
+              updatedText: "after\n",
+              isCreation: creation,
+            },
+          ],
+        },
+        { root: workspace },
+      ),
+      true,
+    );
+    const moved = join(root, "moved");
+    renameSync(source, moved);
+    symlinkSync(moved, source);
+    assert.equal(controller.undoLast().ok, false);
+    assert.equal(readFileSync(join(moved, "file.txt"), "utf8"), "after\n");
+    assert.equal(controller.canUndo(), true);
+    rmSync(source);
+    renameSync(moved, source);
+    assert.equal(controller.undoLast().ok, true);
+    controller.dispose();
+  }
+});
+
+test("undo refuses a corrupted backup and retains recovery for retry", (t) => {
+  const root = makeTempDir("matrix-undo-corrupt-");
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const file = join(root, "file.txt");
+  writeFileSync(file, "before\n");
+  const backup = backupFile(file, { home: join(root, "home") });
+  writeFileSync(file, "after\n");
+  const controller = createController({ home: join(root, "home") });
+  t.after(() => controller.dispose());
+  assert.equal(
+    controller.restoreFromSession(
+      {
+        version: 1,
+        runId: "run-backup",
+        entries: [
+          {
+            file: "file.txt",
+            absPath: file,
+            original: "before\n",
+            updatedText: "after\n",
+            backupPath: backup.path,
+            isCreation: false,
+          },
+        ],
+      },
+      { root },
+    ),
+    true,
+  );
+  writeFileSync(backup.path, "corrupt\n");
+  const resumed = createController({ home: join(root, "home") });
+  assert.equal(resumed.restoreFromSession(controller.getUndoRun(), { root }), false);
+  resumed.dispose();
+  const result = controller.undoLast();
+  assert.equal(result.ok, false);
+  assert.match(result.error, /integrity/);
+  assert.equal(readFileSync(file, "utf8"), "after\n");
+  assert.equal(controller.canUndo(), true);
+  assert.equal(existsSync(backup.path), true);
+  writeFileSync(backup.path, "before\n");
+  assert.equal(controller.undoLast().ok, true);
+  assert.equal(readFileSync(file, "utf8"), "before\n");
+});
+
+test("live undo retains workspace and backup fingerprints through session persistence", async (t) => {
+  const demo = copyDemo();
+  t.after(() => demo.cleanup());
+  const home = join(demo.root, "home");
+  const controller = createController({ home });
+  t.after(() => controller.dispose());
+  await controller.start({
+    task: TASK,
+    project: detectProject(demo.workspace),
+    model: { id: "local" },
+    autoApprove: true,
+  });
+  const record = controller.getUndoRun();
+  assert.match(record.rootIdentity, /^\d+:\d+$/);
+  assert.match(record.entries[0].originalHash, /^[a-f0-9]{64}$/);
+  const source = join(demo.workspace, "src");
+  const moved = join(demo.root, "moved-src");
+  renameSync(source, moved);
+  symlinkSync(moved, source);
+  assert.equal(controller.undoLast().ok, false);
+  assert.equal(controller.canUndo(), true);
+  assert.ok(readFileSync(join(moved, "processor.py"), "utf8").includes(FIXED));
+  rmSync(source);
+  renameSync(moved, source);
+  assert.equal(controller.undoLast().ok, true);
+});
+
 test("undo fingerprinting rejects an external append beyond the old read cap", (t) => {
   const root = makeTempDir("matrix-undo-raw-fingerprint-");
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -340,14 +463,17 @@ test("undo fingerprinting rejects an external append beyond the old read cap", (
   const controller = createController({ home: join(root, "home") });
   t.after(() => controller.dispose());
   assert.equal(
-    controller.restoreFromSession({
-      file: "large.txt",
-      absPath: file,
-      original: "",
-      updatedText,
-      backupPath: null,
-      isCreation: true,
-    }),
+    controller.restoreFromSession(
+      {
+        file: "large.txt",
+        absPath: file,
+        original: "",
+        updatedText,
+        backupPath: null,
+        isCreation: true,
+      },
+      { root },
+    ),
     true,
   );
 
@@ -483,7 +609,7 @@ test("partial undo persists only pending entries and their backups for a resumed
     home,
     onEvent: (event) => events.push(event),
     writeUndo: (path, content) => {
-      if (path === aPath && failA) {
+      if (path.endsWith("/a.txt") && failA) {
         failA = false;
         throw new Error("injected mid-undo failure");
       }
@@ -500,6 +626,7 @@ test("partial undo persists only pending entries and their backups for a resumed
           file: "a.txt",
           absPath: aPath,
           original: "lossy fallback",
+          originalHash: createHash("sha256").update(aBefore).digest("hex"),
           updatedText: "after-a\n",
           backupPath: aBackup.path,
           isCreation: false,
