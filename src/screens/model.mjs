@@ -29,8 +29,10 @@ export function ModelScreen({
   models = [],
   selected = 0,
   activeId = null,
+  activeKey = null,
   hasKey = false,
   filter = "",
+  manual = null,
   width = 78,
   height = 20,
 }) {
@@ -39,34 +41,70 @@ export function ModelScreen({
 
   models.forEach((model, index) => {
     const isSelected = index === selected;
-    const isCurrent = activeId ? model.id === activeId : false;
+    const isCurrent = activeKey
+      ? model.pickerKey === activeKey
+      : activeId
+        ? model.id === activeId
+        : false;
     const isOllama = model.provider === "ollama" || model.id.startsWith("ollama/");
-    const needsKey = model.remote && !isOllama && !hasKey;
+    const needsKey =
+      model.remote &&
+      !isOllama &&
+      (typeof model.available === "boolean" ? model.available === false : !hasKey);
     const freeTier = isFreeModel(model);
+    const custom = model.custom === true;
+    const discovered = model.source === "discovered";
     const toolLabel =
       model.tools === true ? "🛠 tools" : model.tools === false ? "no tools" : "tools unknown";
+    const observation = model.observation;
+    const observedChecks = observation
+      ? [
+          observation.tools !== "not-evaluated" ? `tools:${observation.tools}` : null,
+          observation.text !== "not-evaluated" ? `text:${observation.text}` : null,
+        ].filter(Boolean)
+      : [];
+    const observedLabel = observation
+      ? `probe ${observedChecks.join(" ") || "n/a"}`
+      : "probe not run";
+    const metadata = [
+      custom ? observedLabel : null,
+      toolLabel,
+      contextLength(model),
+      price(model),
+      model.description,
+    ]
+      .filter(Boolean)
+      .join(" · ");
 
     // Badges
     const badgeText = !model.remote
       ? "[OFFLINE]"
-      : isOllama
-        ? "[OLLAMA]"
-        : freeTier
-          ? "[FREE]"
-          : "[PRO]";
+      : custom
+        ? discovered
+          ? "[DISC]"
+          : "[CUSTOM]"
+        : isOllama
+          ? "[OLLAMA]"
+          : freeTier
+            ? "[FREE]"
+            : "[PRO]";
     const badgeColor = !model.remote
       ? forge.muted
-      : isOllama
-        ? forge.accent
-        : freeTier
+      : custom
+        ? model.stale
+          ? forge.warn
+          : forge.accent
+        : isOllama
           ? forge.accent
-          : forge.warn;
+          : freeTier
+            ? forge.accent
+            : forge.warn;
 
     rows.push(
       h(
         Box,
         {
-          key: model.id,
+          key: model.pickerKey ?? model.id,
           flexDirection: "column",
           width: inner,
           backgroundColor: isSelected ? forge.rule : undefined,
@@ -85,17 +123,14 @@ export function ModelScreen({
           h(
             Text,
             { color: forge.muted },
-            `  ${model.provider ?? (model.remote ? "openrouter" : "matrix")}`,
+            `  ${model.providerName ?? model.provider ?? (model.remote ? "openrouter" : "matrix")}`,
           ),
           needsKey ? h(Text, { color: forge.warn }, "  · needs key") : null,
         ),
         h(
           Text,
           { color: isSelected ? forge.text : forge.muted, wrap: "truncate", width: inner },
-          truncateToWidth(
-            `   ${model.description ?? ""}  ·  ${contextLength(model)}  ·  ${price(model)}  ·  ${toolLabel}`,
-            inner,
-          ),
+          truncateToWidth(`   ${metadata}`, inner),
         ),
       ),
     );
@@ -149,16 +184,26 @@ export function ModelScreen({
       },
       ...visibleRows,
       h(Box, { height: 1 }),
-      h(
-        Text,
-        { color: forge.muted, wrap: "truncate", width: inner },
-        truncateToWidth(
-          hasKey
-            ? `↑/↓/wheel select · Enter apply · Esc cancel${scrollHint}`
-            : `No OpenRouter key. Local Forge works fully offline.${scrollHint}`,
-          inner,
-        ),
-      ),
+      manual
+        ? h(
+            Text,
+            {
+              color: manual.error ? forge.warn : forge.accent,
+              wrap: "truncate",
+              width: inner,
+            },
+            truncateToWidth(
+              manual.error
+                ? `! ${manual.error} · Esc cancel`
+                : `Exact model on ${manual.providerName}: ${manual.text}█ · Enter apply · Esc cancel`,
+              inner,
+            ),
+          )
+        : h(
+            Text,
+            { color: forge.muted, wrap: "truncate", width: inner },
+            truncateToWidth(`↑↓ ↵ e:exact s:save r:reload${scrollHint}`, inner),
+          ),
     ),
   );
 }

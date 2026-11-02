@@ -8,7 +8,9 @@ reporting, and approval-gated writes before adding visual or agent capabilities.
 1. `README.md` — user workflows, commands, keymap, and safety contract.
 2. `MATRIX.md` — runtime architecture and implementation invariants.
 3. `ENGINEERING_REVIEW.md` — verified findings, baseline measurements, and risks.
-4. `ENGINEERING_PLAN.md` — stable task IDs, dependencies, acceptance criteria, and execution waves.
+4. `NEXT_PHASE.md` — active provider-first assignments, architecture, audit gates and dispatch board.
+   `ENGINEERING_PLAN.md` is the historical backlog; its completion labels do not establish completion
+   of the next phase. For next-phase work read every linked assignment/architecture/audit document.
 5. `RELEASE.md` — private/internal package boundary and release-only gates.
 6. `eval/README.md` — evaluation evidence classes, metrics, baselines, and review policy.
 
@@ -46,8 +48,9 @@ workspaces and a temporary `MATRIX_HOME`; never intentionally modify the checked
   opt-in and exact one-shot approval, a no-network disposable snapshot, and complete audits. Never pass
   model-selected environment/backend/resource/home/hooks, never create live edits or undo, and never
   fall back to unsandboxed execution. Keep inline/file script bytes out of cards, sessions, and logs.
-- The current swarm is three projections of one event stream, not independent parallel agents. Do not
-  imply otherwise until real isolated concurrency exists.
+- The ordinary swarm is three projections of one event stream. The separate parallel command runs
+  real isolated Local Forge agents. Preserve that distinction and do not claim remote-model teamwork
+  is exposed by the parallel CLI.
 - Keep event, transcript, process-output, and swarm collections bounded.
 
 ## UI contract
@@ -66,7 +69,13 @@ workspaces and a temporary `MATRIX_HOME`; never intentionally modify the checked
 
 ## Task workflow for follow-up agents
 
-1. Claim one stable task ID from `ENGINEERING_PLAN.md`; read its dependencies and file-ownership notes.
+Before implementation self-review or an assigned review, read
+`docs/next-phase/REVIEW_METHOD.md` and apply it to the changed behavior. A repair
+submission must test an alternate counterexample from the same failure family,
+not only the original reproduction. State review scope and independence honestly.
+
+1. Claim one stable task ID from the active brief in `NEXT_PHASE.md`; read its dependencies and
+   file-ownership notes. Use `ENGINEERING_PLAN.md` only for explicitly assigned historical follow-up.
 2. Inspect the current working tree and preserve other agents' changes. Do not revert unrelated work.
 3. Reproduce the issue or add a characterization/regression test before behavioral changes when practical.
 4. Make the smallest coherent change that satisfies the task's acceptance criteria. Avoid drive-by
@@ -75,6 +84,10 @@ workspaces and a temporary `MATRIX_HOME`; never intentionally modify the checked
 6. Update `README.md`, `MATRIX.md`, and the task status when behavior or architecture changes. The
    integrator owns shared documentation during parallel execution waves to avoid conflicts.
 7. Run the required verification commands and report exact results, remaining risks, and files changed.
+
+For next-phase assignments, use `docs/next-phase/STATUS.md` for ownership and submission state.
+Implementers mark work SUBMITTED; the chief records ACCEPTED only after the independent evidence
+review in `docs/next-phase/AUDIT.md` and the active phase acceptance matrix. Do not start dependent runtime work before its contract gate.
 
 `src/matrix.mjs`, `package.json`, `package-lock.json`, and shared test helpers are high-collision files.
 Only one agent should own each in an execution wave. Do not start the orchestrator split while another

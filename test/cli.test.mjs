@@ -7,6 +7,33 @@ import { HELP_TEXT, parseArgv } from "../lib/cli.mjs";
 import { formatDoctor, runDoctor, runDoctorAsync } from "../lib/doctor.mjs";
 import { copyDemo } from "./helpers.mjs";
 
+test("provider replace requires an exact profile file and expected digest", () => {
+  const digest = "a".repeat(64);
+  const options = parseArgv([
+    "providers",
+    "replace",
+    "lab",
+    "profile.json",
+    "--expected-digest",
+    digest,
+  ]);
+  assert.equal(options.providerArg, "lab");
+  assert.equal(options.providerProfileFile, "profile.json");
+  assert.equal(options.providerExpectedDigest, digest);
+  assert.throws(
+    () => parseArgv(["providers", "replace", "lab", "profile.json"]),
+    /expected-digest/,
+  );
+  assert.throws(
+    () => parseArgv(["providers", "replace", "lab", "--expected-digest", digest]),
+    /profile JSON file/,
+  );
+  assert.throws(
+    () => parseArgv(["providers", "show", "lab", "--expected-digest", digest]),
+    /not valid/,
+  );
+});
+
 test("recovery and publication retry require one explicit intent and reject broad approval", () => {
   for (const command of ["recover", "publish"]) {
     const parsed = parseArgv([command, "/tmp/intent.json"]);
@@ -267,4 +294,243 @@ test("failed sandbox probes remain unavailable instead of becoming synchronous s
   assert.equal(availability.status, "warn");
   assert.match(availability.detail, /unavailable.*namespaces unsupported/);
   assert.match(availability.hint, /no unsandboxed fallback/);
+});
+
+test("an explicit provider presets the TUI for every task combination", () => {
+  for (const args of [
+    ["--provider", "lab", "--model", "Review/Arbitrary:tag", "Inspect this repository"],
+    ["--provider", "lab", "--model", "sonnet", "Inspect this repository"],
+    ["--provider", "lab", "Inspect this repository"],
+    ["--provider", "lab"],
+    ["--provider", "openrouter", "--model", "sonnet"],
+    ["--provider", "ollama", "--model", "llama3.2"],
+  ]) {
+    const options = parseArgv(args);
+    assert.equal(options.providerId, args[1], args.join(" "));
+  }
+  assert.match(HELP_TEXT, /named profile or built-in \(matrix, openrouter, ollama\)/);
+  assert.match(HELP_TEXT, /preselects that exact provider\/model in the TUI/);
+  assert.doesNotMatch(HELP_TEXT, /refused in the interactive terminal/);
+});
+
+test("providers commands parse actions, required flags and scope", () => {
+  const list = parseArgv(["providers", "list", "--json"]);
+  assert.equal(list.command, "providers");
+  assert.equal(list.providersAction, "list");
+  assert.equal(list.json, true);
+
+  const add = parseArgv([
+    "providers",
+    "add",
+    "--id",
+    "lab",
+    "--base-url",
+    "https://inference.example/v1",
+    "--api-key-env",
+    "LAB_API_KEY",
+    "--model",
+    "Vendor/Model-X:latest",
+    "--name",
+    "Lab",
+  ]);
+  assert.equal(add.providersAction, "add");
+  assert.equal(add.providerAddId, "lab");
+  assert.equal(add.providerBaseUrl, "https://inference.example/v1");
+  assert.equal(add.providerApiKeyEnv, "LAB_API_KEY");
+  assert.equal(add.modelQuery, "Vendor/Model-X:latest");
+  assert.equal(add.providerName, "Lab");
+  assert.equal(add.providerAuth, "bearer");
+
+  const none = parseArgv([
+    "providers",
+    "add",
+    "--id",
+    "lab",
+    "--base-url",
+    "https://inference.example/v1",
+    "--auth",
+    "none",
+  ]);
+  assert.equal(none.providerAuth, "none");
+
+  const models = parseArgv(["providers", "models", "lab", "--refresh"]);
+  assert.equal(models.providerArg, "lab");
+  assert.equal(models.providerRefresh, true);
+  assert.equal(parseArgv(["providers", "remove", "lab"]).providerArg, "lab");
+
+  assert.throws(() => parseArgv(["providers"]), /expects one of/);
+  assert.throws(() => parseArgv(["providers", "add"]), /requires --id/);
+  assert.throws(() => parseArgv(["providers", "add", "--id", "lab"]), /requires --base-url/);
+  assert.throws(
+    () => parseArgv(["providers", "add", "--id", "lab", "--base-url", "https://example/v1"]),
+    /requires --api-key-env/,
+  );
+  assert.throws(
+    () =>
+      parseArgv([
+        "providers",
+        "add",
+        "--id",
+        "lab",
+        "--base-url",
+        "https://example/v1",
+        "--auth",
+        "none",
+        "--api-key-env",
+        "X",
+      ]),
+    /not valid with --auth none/,
+  );
+  assert.throws(
+    () =>
+      parseArgv([
+        "providers",
+        "add",
+        "--id",
+        "Lab",
+        "--base-url",
+        "https://example/v1",
+        "--api-key-env",
+        "X",
+      ]),
+    /lowercase/,
+  );
+  assert.throws(() => parseArgv(["providers", "models"]), /exactly one provider id/);
+  assert.throws(() => parseArgv(["providers", "models", "lab", "extra"]), /exactly one/);
+  assert.throws(() => parseArgv(["providers", "list", "--refresh"]), /--refresh is only valid/);
+  assert.throws(
+    () => parseArgv(["providers", "models", "lab", "--model", "x"]),
+    /--model is not valid/,
+  );
+
+  const show = parseArgv(["providers", "show", "lab", "--json"]);
+  assert.equal(show.providersAction, "show");
+  assert.equal(show.providerArg, "lab");
+  assert.equal(show.json, true);
+
+  const update = parseArgv([
+    "providers",
+    "update",
+    "lab",
+    "--name",
+    "Lab Two",
+    "--model",
+    "vendor/new",
+    "--remove-model",
+    "vendor/old",
+    "--default-model",
+    "vendor/new",
+  ]);
+  assert.equal(update.providersAction, "update");
+  assert.equal(update.providerArg, "lab");
+  assert.equal(update.providerName, "Lab Two");
+  assert.equal(update.modelQuery, "vendor/new");
+  assert.equal(update.providerRemoveModel, "vendor/old");
+  assert.equal(update.providerDefaultModel, "vendor/new");
+  assert.equal(parseArgv(["providers", "update", "lab", "--auth", "none"]).providerAuth, "none");
+  assert.equal(
+    parseArgv(["providers", "update", "lab", "--api-key-env", "LAB_KEY"]).providerApiKeyEnv,
+    "LAB_KEY",
+  );
+
+  assert.throws(() => parseArgv(["providers", "update", "lab"]), /at least one change/);
+  assert.throws(() => parseArgv(["providers", "update"]), /exactly one provider id/);
+  assert.throws(
+    () => parseArgv(["providers", "update", "lab", "--id", "lab"]),
+    /--id is not valid/,
+  );
+  assert.throws(
+    () => parseArgv(["providers", "show", "lab", "--name", "x"]),
+    /--name is not valid/,
+  );
+  assert.throws(() => parseArgv(["providers", "list", "--id", "lab"]), /--id is not valid/);
+  assert.throws(
+    () =>
+      parseArgv([
+        "providers",
+        "add",
+        "--id",
+        "lab",
+        "--base-url",
+        "https://example/v1",
+        "--auth",
+        "none",
+        "--remove-model",
+        "vendor/x",
+      ]),
+    /--remove-model is not valid/,
+  );
+  assert.throws(
+    () =>
+      parseArgv([
+        "providers",
+        "update",
+        "lab",
+        "--model",
+        "vendor/a",
+        "--remove-model",
+        "vendor/a",
+      ]),
+    /cannot name the same model/,
+  );
+  assert.throws(
+    () => parseArgv(["providers", "update", "lab", "--auth", "none", "--api-key-env", "X"]),
+    /not valid with --auth none/,
+  );
+  assert.throws(
+    () => parseArgv(["providers", "update", "lab", "--auth", "magic"]),
+    /--auth expects/,
+  );
+  assert.throws(
+    () => parseArgv(["interactive", "--remove-model", "x"]),
+    /--remove-model is only valid/,
+  );
+  assert.throws(
+    () =>
+      parseArgv([
+        "providers",
+        "add",
+        "--id",
+        "lab",
+        "--base-url",
+        "https://example/v1",
+        "--api-key-env",
+        "X",
+        "--provider",
+        "lab",
+      ]),
+    /--provider is only valid/,
+  );
+  const probe = parseArgv(["providers", "test", "lab", "--model", "vendor/exact"]);
+  assert.equal(probe.providersAction, "test");
+  assert.equal(probe.providerArg, "lab");
+  assert.equal(probe.modelQuery, "vendor/exact");
+  assert.deepEqual(probe.providerChecks, ["text", "tools"]);
+  assert.deepEqual(
+    parseArgv(["providers", "test", "lab", "--model", "x", "--checks", "tools,text,tools"])
+      .providerChecks,
+    ["tools", "text"],
+  );
+  assert.throws(() => parseArgv(["providers", "test", "lab"]), /requires --model/);
+  assert.throws(
+    () => parseArgv(["providers", "test", "lab", "--model", "x", "--checks", "vision"]),
+    /--checks expects text/,
+  );
+  assert.throws(
+    () => parseArgv(["providers", "test", "lab", "--model", "x", "--checks", ","]),
+    /at least one of text, tools/,
+  );
+  assert.throws(
+    () => parseArgv(["providers", "list", "--checks", "text"]),
+    /--checks is not valid/,
+  );
+  assert.throws(
+    () => parseArgv(["providers", "test", "lab", "--model", "x", "--refresh"]),
+    /--refresh is only valid/,
+  );
+
+  assert.match(HELP_TEXT, /matrix providers add/);
+  assert.match(HELP_TEXT, /matrix providers show/);
+  assert.match(HELP_TEXT, /matrix providers update/);
+  assert.match(HELP_TEXT, /matrix providers test/);
 });

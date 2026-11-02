@@ -1,6 +1,7 @@
 // Pure transcript/session projections. No React, controller, provider, or filesystem
 // work belongs here; lib/session.mjs remains responsible for persistence.
 
+import { sessionProviderIdentity } from "../lib/provider-session.mjs";
 import { retainTranscript, SESSION_RETENTION } from "../lib/session.mjs";
 
 export const RETAINED_OUTPUT_LIMIT = 400;
@@ -246,6 +247,7 @@ export function sessionSnapshot({
         }
       : null,
     modelId: model?.id ?? "local",
+    provider: sessionProviderIdentity(model),
     history: history.map((message) => ({
       id: message.id,
       role: message.role,

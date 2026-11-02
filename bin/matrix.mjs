@@ -32,11 +32,33 @@ import { runModelAgent } from "../lib/model-agent.mjs";
 import { classifyOutcome } from "../lib/outcome.mjs";
 import { withTestExecutionMetadata } from "../lib/process.mjs";
 import { isOpenRouterAvailable } from "../lib/openrouter.mjs";
+import { buildProviderCatalog } from "../lib/provider-catalog.mjs";
+import { loadProviderConfig } from "../lib/provider-config.mjs";
+import { bindProviderTarget } from "../lib/provider-transport.mjs";
+import { sessionProviderIdentity, validateSessionProvider } from "../lib/provider-session.mjs";
+import {
+  addProvider,
+  formatProviderDetail,
+  formatProviderList,
+  formatProviderModels,
+  formatProviderProbe,
+  formatProviderUpdate,
+  listProviders,
+  modelsReport,
+  removeProvider,
+  replaceProviderFromFile,
+  showProvider,
+  testProvider,
+  updateProvider,
+} from "../lib/provider-commands.mjs";
+import { resolveProviderSelection } from "../lib/provider-contracts.mjs";
 import { MODELS, resolveModel } from "../lib/models.mjs";
+import { pickerModelFromTarget } from "../src/provider-picker.mjs";
 import { createSwarmState, applySwarmEvent } from "../lib/swarm.mjs";
 import {
   loadLatestSession,
   loadSession,
+  saveSession,
   listSessions,
   matrixHome,
   newRunId,
@@ -612,15 +634,58 @@ function publicResult(result) {
 
 async function runHeadlessTask(options, cwd) {
   const project = detectProject(cwd);
-  const query = options.offline ? "local" : (options.modelQuery ?? "local");
-  const model = resolveModel(query, { fallback: false });
-  if (!model) throw new Error(`unknown model "${query}"; use --help to list supported aliases`);
+  let model;
+  let providerTarget = null;
+  if (options.providerId) {
+    const loaded = loadProviderConfig({ home: matrixHome() });
+    if (loaded.status === "invalid") {
+      throw new Error(`provider configuration is invalid: ${loaded.error.message}`);
+    }
+    const selection = resolveProviderSelection({
+      providerId: options.providerId,
+      modelQuery: options.modelQuery ?? null,
+      config: loaded.config,
+    });
+    if (selection.target.kind === "local") {
+      providerTarget = null;
+      model = resolveModel("local", { fallback: false });
+    } else {
+      providerTarget = selection.target;
+      model = {
+        id: providerTarget.modelId,
+        name: `${providerTarget.providerName} · ${providerTarget.modelName}`,
+        provider: providerTarget.providerId,
+        short: providerTarget.modelName,
+        context: providerTarget.contextWindow,
+        pricing: providerTarget.pricing,
+        remote: true,
+        tools: providerTarget.capabilities.tools === "unsupported" ? false : null,
+      };
+    }
+  } else {
+    const query = options.offline ? "local" : (options.modelQuery ?? "local");
+    model = resolveModel(query, { fallback: false });
+    if (!model) throw new Error(`unknown model "${query}"; use --help to list supported aliases`);
+  }
   if (options.approvedCommandPlanHash && !model.remote) {
     throw new Error(
       "--allow-command requires a remote tool-calling model; Local Forge never infers a command plan",
     );
   }
-  if (model.remote && !isOpenRouterAvailable(model.id)) {
+  if (providerTarget) {
+    const binding = bindProviderTarget(providerTarget, process.env);
+    if (!binding.ok) throw new Error(binding.error);
+    if (providerTarget.capabilities.tools === "unsupported") {
+      throw new Error(
+        `provider model "${providerTarget.modelId}" declares no tool support; a coding run needs tools`,
+      );
+    }
+    if (providerTarget.capabilities.tools === "unknown") {
+      process.stderr.write(
+        "matrix: tool support is unverified for this model; use providers test to check\n",
+      );
+    }
+  } else if (model.remote && !isOpenRouterAvailable(model.id)) {
     throw new Error(
       `${model.name} needs an OpenRouter key; use Local Forge or set OPENROUTER_API_KEY`,
     );
@@ -669,7 +734,9 @@ async function runHeadlessTask(options, cwd) {
       policy,
     },
     () =>
-      model.remote ? runModelAgent({ ...common, model, commandCapability }) : runLocalAgent(common),
+      model.remote
+        ? runModelAgent({ ...common, model, commandCapability, providerTarget })
+        : runLocalAgent(common),
   );
   const result = withTestExecutionMetadata(agentResult, lastVerification);
   const publicRun = publicResult(result);
@@ -764,12 +831,108 @@ async function commandParallel(options, cwd) {
   if (result?.status !== "success") process.exitCode = 1;
 }
 
+async function commandProviders(options) {
+  const home = matrixHome();
+  const env = process.env;
+  const action = options.providersAction;
+
+  if (action === "replace") {
+    const result = await replaceProviderFromFile({
+      home,
+      providerId: options.providerArg,
+      profileFile: resolve(options.cwd, options.providerProfileFile),
+      expectedDigest: options.providerExpectedDigest,
+    });
+    if (options.json) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    else
+      process.stdout.write(`provider "${result.providerId}" replaced · digest ${result.digest}\n`);
+    return;
+  }
+
+  if (action === "add") {
+    const result = await addProvider({ home, ...options });
+    if (options.json) {
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      return;
+    }
+    process.stdout.write(
+      `provider "${result.providerId}" added · ${result.models.length} configured model${result.models.length === 1 ? "" : "s"}\n${result.path}\n`,
+    );
+    return;
+  }
+
+  if (action === "remove") {
+    const result = await removeProvider({ home, providerId: options.providerArg });
+    if (options.json) {
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      return;
+    }
+    process.stdout.write(
+      `provider "${result.providerId}" removed · ${result.remaining.length} remaining\n`,
+    );
+    return;
+  }
+
+  if (action === "show") {
+    const report = showProvider({ home, providerId: options.providerArg, env });
+    if (options.json) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    else process.stdout.write(`${formatProviderDetail(report)}\n`);
+    return;
+  }
+
+  if (action === "update") {
+    const result = await updateProvider({ home, providerId: options.providerArg, ...options });
+    if (options.json) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    else process.stdout.write(`${formatProviderUpdate(result)}\n`);
+    return;
+  }
+
+  if (action === "test") {
+    const report = await testProvider({
+      home,
+      providerId: options.providerArg,
+      modelQuery: options.modelQuery,
+      providerChecks: options.providerChecks,
+      env,
+    });
+    if (options.json) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    else process.stdout.write(`${formatProviderProbe(report)}\n`);
+    if (!report.ok) process.exitCode = 1;
+    return;
+  }
+
+  if (action === "list") {
+    const report = listProviders({ home, env });
+    if (options.json) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    else process.stdout.write(`${formatProviderList(report)}\n`);
+    if (report.status === "invalid") process.exitCode = 1;
+    return;
+  }
+
+  const report = await modelsReport({
+    home,
+    providerId: options.providerArg,
+    env,
+    refresh: options.providerRefresh,
+  });
+  if (options.json) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  else process.stdout.write(`${formatProviderModels(report)}\n`);
+  if (report.refresh && report.refresh.ok === false) process.exitCode = 1;
+}
+
 async function commandInteractive(options, cwd) {
   if (options.demo && options.autoApprove) {
     throw new Error("refusing --yes on the bundled demo; copy demo-project and run there instead");
   }
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    if (options.task) return runHeadlessTask(options, cwd);
+    if (options.task) {
+      if (options.resume || options.sessionId) {
+        throw new Error(
+          "headless tasks cannot resume a saved session; open the session in a terminal instead",
+        );
+      }
+      return runHeadlessTask(options, cwd);
+    }
     throw new Error(
       "interactive Matrix needs a TTY; pass a task for headless mode or use matrix dump/vision",
     );
@@ -777,29 +940,99 @@ async function commandInteractive(options, cwd) {
   if (options.approvedCommandPlanHash) {
     throw new Error("--allow-command is only valid for a non-interactive headless task");
   }
-  if (options.modelQuery && !options.offline) {
+  const home = matrixHome();
+  const providerLoaded = loadProviderConfig({ home });
+  let providerPreset = null;
+  if (options.providerId) {
+    if (providerLoaded.status === "invalid") {
+      throw new Error(`provider configuration is invalid: ${providerLoaded.error.message}`);
+    }
+    const target = resolveProviderSelection({
+      providerId: options.providerId,
+      modelQuery: options.modelQuery ?? null,
+      config: providerLoaded.status === "valid" ? providerLoaded.config : undefined,
+    }).target;
+    if (target.kind !== "local") {
+      const binding = bindProviderTarget(target, process.env);
+      if (!binding.ok) throw new Error(binding.error);
+    }
+    providerPreset = pickerModelFromTarget(target, {
+      source: "preset",
+      available: true,
+      description: `Explicit --provider ${options.providerId} preset`,
+    });
+  } else if (options.modelQuery && !options.offline) {
     const selected = resolveModel(options.modelQuery, { fallback: false });
     if (!selected)
       throw new Error(
         `unknown model "${options.modelQuery}"; use --help to list supported aliases`,
       );
   }
+  const providerCatalog = buildProviderCatalog({
+    home,
+    env: process.env,
+    loaded: providerLoaded,
+  });
   const session = options.sessionId
     ? loadSession(options.sessionId, {
-        home: matrixHome(),
+        home,
         cwd,
         onWarning: (warning) =>
           process.stderr.write(`matrix: session warning: ${warning.message}\n`),
       })
     : options.resume
       ? loadLatestSession(cwd, {
-          home: matrixHome(),
+          home,
           onWarning: (warning) =>
             process.stderr.write(`matrix: session warning: ${warning.message}\n`),
         })
       : null;
   if ((options.sessionId || options.resume) && !session)
     throw new Error("no matching saved session for this workspace");
+  if (session?.provider) {
+    if (options.offline) {
+      throw new Error(
+        "--offline cannot resume a provider-bound session; start a new session instead",
+      );
+    }
+    const explicitlyReselected = Boolean(
+      options.providerId && options.modelQuery && providerPreset,
+    );
+    if (options.modelQuery && !explicitlyReselected) {
+      throw new Error(
+        "--model cannot change a provider-bound session; start a new session instead",
+      );
+    }
+    if (options.providerId && !explicitlyReselected) {
+      throw new Error(
+        "--provider cannot change a provider-bound session; start a new session instead",
+      );
+    }
+    const check = validateSessionProvider(session.provider, {
+      loaded: providerLoaded,
+      config: providerLoaded.status === "valid" ? providerLoaded.config : null,
+      catalog: providerCatalog,
+    });
+    if (!check.ok && !explicitlyReselected) {
+      throw new Error(
+        `${check.error}; restore the exact provider configuration or explicitly reselect with --provider <id> --model <exact-id>`,
+      );
+    }
+    if (explicitlyReselected) {
+      const saved = saveSession(
+        {
+          ...session,
+          modelId: providerPreset.id,
+          provider: sessionProviderIdentity(providerPreset),
+        },
+        { home, retention: { pruneBackups: false } },
+      );
+      if (!saved.ok) throw new Error("could not save the explicitly reselected session provider");
+      for (const warning of saved.warnings) {
+        process.stderr.write(`matrix: session warning: ${warning.message}\n`);
+      }
+    }
+  }
   if (options.cols) process.env.MATRIX_COLS = String(options.cols);
   if (options.rows) process.env.MATRIX_ROWS = String(options.rows);
   if (options.mono) process.env.NO_COLOR = "1";
@@ -810,7 +1043,6 @@ async function commandInteractive(options, cwd) {
     options.noSync || !isSyncSupported()
       ? process.stdout
       : createSynchronizedStdout(process.stdout, { syncSupported: true });
-  const home = matrixHome();
   const policy = createTestPolicy({ home, allowTests: Boolean(options.allowTests) });
   await withTestExecutionContext({ home, policy, origin: TEST_ORIGIN.USER }, async () => {
     try {
@@ -819,10 +1051,14 @@ async function commandInteractive(options, cwd) {
           cwd,
           initialTask: options.task,
           initialModel: options.modelQuery,
+          initialSelection: providerPreset,
           initialSession: session,
+          initialProvider: session?.provider ?? null,
           autoApprove: Boolean(options.autoApprove),
           offline: Boolean(options.offline),
           enableCommands: Boolean(options.enableCommands),
+          providerCatalog,
+          providerConfig: providerLoaded.status === "valid" ? providerLoaded.config : null,
         }),
         {
           stdout,
@@ -918,6 +1154,7 @@ export async function main(argv = process.argv.slice(2)) {
       }
       return;
     }
+    if (options.command === "providers") return await commandProviders(options);
     if (options.command === "doctor") return await commandDoctor(options);
     if (options.command === "sessions") return commandSessions(options);
     if (options.command === "vision") return commandVision(options);

@@ -141,6 +141,15 @@ node bin/matrix.mjs "fix the bounds bug"     # open with a task
 node bin/matrix.mjs "fix the bounds bug" --yes --json   # headless, auto-approved
 node bin/matrix.mjs doctor                  # environment and capability report
 node bin/matrix.mjs sessions                # saved sessions
+node bin/matrix.mjs providers list           # named providers and discovery freshness
+node bin/matrix.mjs providers add --id lab --base-url https://inference.example/v1 --api-key-env LAB_API_KEY --model 'vendor/Model-X:latest'
+node bin/matrix.mjs providers show lab                       # full profile and freshness
+node bin/matrix.mjs providers replace lab profile.json --expected-digest <digest>
+node bin/matrix.mjs providers update lab --name 'Lab Two' --model 'vendor/Model-Y:latest' --default-model 'vendor/Model-Y:latest'
+node bin/matrix.mjs providers models lab --refresh   # explicit /models request
+node bin/matrix.mjs providers test lab --model 'vendor/Model-X:latest' --checks text,tools
+node bin/matrix.mjs --provider lab --model 'vendor/Model-X:latest' "inspect this repo"   # headless run
+node bin/matrix.mjs providers remove lab
 node bin/matrix.mjs tour --demo             # real end-to-end demo on a temp copy
 node bin/matrix.mjs vision scope --demo     # print the pixel canvas
 node bin/matrix.mjs vision telemetry --demo
@@ -151,6 +160,49 @@ node bin/matrix.mjs bench --iterations 20
 node bin/matrix.mjs bench --stress --suite transcript --iterations 3
 ```
 
+Named providers store the environment-variable name, never the key value; export the value in your
+shell. `providers add` refuses duplicate ids, `providers show` prints one profile with its discovery
+state and current configuration digest, and `providers update` changes only the fields named by its
+flags. `providers replace` reads one complete profile JSON object and requires that digest; it rejects
+stale digests instead of overwriting another change. Never put key values in the profile file.
+`matrix doctor` reports provider configuration validity and whether each referenced key is present,
+without printing key values or contacting providers.
+A default model may be an
+exact ID that is not in the configured list (provider-only runs use it directly); removing the model
+that is the default clears it instead of leaving a broken pointer. Changing the endpoint or auth
+invalidates the cached snapshot, while a rename keeps it. `providers models` lists configured models
+even without `/models`, and `--refresh` is the only discovery path that touches the network.
+Execution-affecting profile changes advance a cache generation, so reverting an endpoint or
+removing and re-adding a profile does not restore old probe or discovery observations. Cached
+observations written before generation tracking must be refreshed again. Direct edits to
+`providers.json` also invalidate old observations; the next explicit probe or refresh updates
+the cache tracking before contacting a provider.
+`providers test <id> --model <exact-id> [--checks text,tools]` is the only probe path: it sends
+synthetic fixtures, never repository contents, and is capped at three requests, 256 completion
+tokens per request and 30 seconds in total. `text` observes stream completion; `tools` observes a
+schema-valid no-op tool call and a text-bearing `stop` follow-up to its tool result. A further
+tool call, a missing or non-`stop` completion, a bare `[DONE]` or an empty answer fails that
+check. Unexpected tool names are redacted before display or storage. Results are stored per
+provider/model/configuration digest in `$MATRIX_HOME/provider-cache/`, without the key; missing
+token fields stay unknown and partial usage is labeled partial; editing the endpoint, auth
+reference or request options invalidates them. `providers show` displays saved observations,
+including manually entered model IDs; the picker shows observed probe status separately from
+declared tool support. Redirects are surfaced and never followed;
+abrupt disconnects, oversized events and malformed tool IDs, arguments or usage fail
+honestly. A pass describes one synthetic stream, not coding quality or context length. In the
+interactive TUI, Alt+M lists configured and discovered provider models alongside the built-ins, with
+per-provider key state; selecting one binds the exact profile endpoint and model. Press `e` in the
+picker to enter any exact wire model ID for the selected provider, including one that is not in the
+configured list. Highlight a custom model and press `s` to save it to its provider profile; press
+`r` to reload the local configuration and catalog without a network request. If the selected
+provider's endpoint or authentication changed, Matrix requires a new selection before running.
+`--provider <id> --model <exact-id>` preselects the same exact target when the TUI opens, and also
+accepts the built-in ids `matrix`, `openrouter` and `ollama`. Saved sessions remember the provider,
+model and configuration digest. If the binding changes, resume refuses unless you explicitly
+reselect with both `--provider` and `--model`, or restore the original configuration.
+The explicit reselection is saved to the session. Session resume requires a terminal; headless
+tasks reject `--resume` and `--session` instead of starting without the saved state.
+
 Useful flags:
 
 | Flag                         | Meaning                                                                                      |
@@ -158,6 +210,7 @@ Useful flags:
 | `-C, --cwd <dir>`            | Operate on another workspace.                                                                |
 | `--demo`                     | Use the bundled demo.                                                                        |
 | `--model <id-or-short>`      | `local`, `sonnet`, `gemini`, `gpt-mini`, `deepseek`, `qwen`, `ollama`, or `ollama/<tag>`.    |
+| `--provider <id>`            | Named profile or built-in (`matrix`, `openrouter`, `ollama`); preselects the exact model.    |
 | `--offline`                  | Force Local Forge.                                                                           |
 | `--yes`                      | Auto-approve edits. Use with care. Does not grant test trust.                                |
 | `--allow-tests`              | Allow the first exact test plan in a headless invocation; required for headless tests.       |
@@ -312,6 +365,7 @@ npm run typecheck      # contract-focused JSDoc/checkJs
 npm run format:check   # Prettier without modifying files
 npm run coverage       # full suite once plus critical-module ratchets
 npm run eval           # 16 network-free agent cases + strict baseline comparison
+npm run eval:provider -- --provider <id> --model <exact>   # opt-in one-run provider coding evidence
 npm run smoke          # render sanity checks
 npm run bench          # bounded local benchmark cases
 npm run pack:check     # inspect the private internal pack without creating a tarball
@@ -320,7 +374,14 @@ npm run pack:check     # inspect the private internal pack without creating a ta
 `npm run check` executes the full test suite only once, inside the coverage gate. `npm run eval`
 separately exercises 16 deterministic Local Forge and mocked-remote policy cases against reviewed
 baselines; `node eval/run.mjs --stress` is an explicit large-repository opt-in. See
-[eval/README.md](eval/README.md) for evidence classes, metrics, and baseline-update policy. No live
+[eval/README.md](eval/README.md) for evidence classes, metrics, and baseline-update policy.
+`npm run eval:provider -- --provider <id> --model <exact>` is a separate explicit opt-in: one
+temporary coding task through the real controller against that exact configured target, with
+provider/model/config digest, task revision/digest, per-check status, outcome and usage recorded in
+`eval/reports/provider.json`. The preflighted credential and endpoint are the ones used by
+execution, and the fixture test file must remain byte-identical with no applied edits; a weakened
+test fails the run even if it passes. It is never part of the default eval or its baseline, sends
+no repository contents, disables shell commands, and claims nothing beyond that one run. No live
 provider quality, price, availability, or latency claim is made. `npm audit` remains a separate
 network-dependent check. The test suite uses temporary workspaces and a temporary
 `MATRIX_HOME`; it never intentionally patches the checked-in demo. Tests cover the real Local Forge apply/deny/undo path, resumed-session

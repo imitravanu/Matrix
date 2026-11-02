@@ -23,7 +23,23 @@ import {
 import { detectProjectAsync, invalidateProjectCache, readFileSafe } from "../lib/project.mjs";
 import { parseScopes, scopeAtLine } from "../lib/scope.mjs";
 import { runTests } from "../lib/process.mjs";
-import { LOCAL_MODEL, MODELS, formatCost, modelIndex, resolveModel } from "../lib/models.mjs";
+import { addProviderModel, loadProviderConfig } from "../lib/provider-config.mjs";
+import { buildProviderCatalog } from "../lib/provider-catalog.mjs";
+import { readProbeRecord } from "../lib/provider-probe.mjs";
+import { LOCAL_MODEL, formatCost, resolveModel } from "../lib/models.mjs";
+import {
+  buildPickerModels,
+  findPickerModel,
+  pickerIndexFor,
+  pickerKeyFor,
+  pickerModelFromTarget,
+} from "./provider-picker.mjs";
+import {
+  isProviderCredentialAvailable,
+  PROVIDER_LIMITS,
+  resolveProviderSelection,
+  targetDigest,
+} from "../lib/provider-contracts.mjs";
 import { createRunController } from "../lib/controller.mjs";
 import { applySwarmEvent, createSwarmState, focusLane } from "../lib/swarm.mjs";
 import { newRunId, saveSession, listSessions, matrixHome } from "../lib/session.mjs";
@@ -61,6 +77,21 @@ import {
 } from "./cards.mjs";
 
 const h = React.createElement;
+const MAX_MANUAL_PICKER_MODELS = 256;
+
+function pickerObservation(target, config) {
+  if (target?.kind !== "custom") return null;
+  const profile = config?.providers.find((entry) => entry.id === target.providerId);
+  if (!profile || targetDigest(profile) !== target.configDigest) return null;
+  const record = readProbeRecord(matrixHome(), profile, target.modelId);
+  return record
+    ? {
+        text: record.checks.text.status,
+        tools: record.checks.tools.status,
+        testedAt: record.testedAt,
+      }
+    : null;
+}
 
 // ---------------------------------------------------------------------------
 // MatrixApp
@@ -70,22 +101,104 @@ export function MatrixApp({
   cwd = process.cwd(),
   initialTask = "",
   initialModel = null,
+  initialSelection = null,
   initialSession = null,
+  initialProvider = null,
   autoApprove: initialAutoApprove = false,
   offline = false,
   enableCommands = false,
+  providerCatalog: initialProviderCatalog = null,
+  providerConfig: initialProviderConfig = null,
   checkCredentialAvailability = isOpenRouterAvailable,
 } = {}) {
   const { exit } = useApp();
   const { cols, height } = useLayout();
   const width = Math.max(20, cols - 2);
 
+  const [providerCatalog, setProviderCatalog] = useState(initialProviderCatalog);
+  const [providerConfig, setProviderConfig] = useState(initialProviderConfig);
+
   const initialHistory = useMemo(() => historyFromSession(initialSession), [initialSession]);
-  const [project, setProject] = useState(null);
-  const [model, setModel] = useState(() =>
-    resolveModel(offline ? "local" : (initialModel ?? initialSession?.modelId ?? "local")),
+  const basePickerModels = useMemo(
+    () => buildPickerModels({ catalog: providerCatalog, config: providerConfig }),
+    [providerCatalog, providerConfig],
   );
-  const [hasKey, setHasKey] = useState(() => checkCredentialAvailability(model.id));
+  // A saved provider identity is authoritative even when the model is absent
+  // from discovery or was entered manually. Rebuild the exact target instead of
+  // asking the legacy model resolver, which would silently choose Local Forge
+  // for an arbitrary built-in or uncatalogued custom wire ID.
+  const sessionSelection = useMemo(() => {
+    if (!initialProvider) return null;
+    try {
+      const target = resolveProviderSelection({
+        providerId: initialProvider.id,
+        modelQuery: initialProvider.modelId,
+        config: providerConfig ?? undefined,
+      }).target;
+      return pickerModelFromTarget(target, {
+        source: "session",
+        available:
+          target.kind === "custom" ? isProviderCredentialAvailable(target, process.env) : null,
+        description: `Saved session model on ${target.providerName}`,
+        observation: pickerObservation(target, providerConfig),
+      });
+    } catch {
+      return null;
+    }
+  }, [initialProvider, providerConfig]);
+  const [extraPickerModels, setExtraPickerModels] = useState(() => {
+    const initial = initialSelection
+      ? {
+          ...initialSelection,
+          observation: pickerObservation(initialSelection.providerTarget, providerConfig),
+        }
+      : sessionSelection;
+    return initial ? [initial] : [];
+  });
+  const pickerModels = useMemo(() => {
+    if (extraPickerModels.length === 0) return basePickerModels;
+    const extras = new Map(extraPickerModels.map((entry) => [pickerKeyFor(entry), entry]));
+    const merged = basePickerModels.map((entry) => {
+      const extra = extras.get(pickerKeyFor(entry));
+      return extra ? { ...extra, observation: entry.observation ?? null } : entry;
+    });
+    const remaining = extraPickerModels.filter(
+      (entry) => !basePickerModels.some((base) => pickerKeyFor(base) === pickerKeyFor(entry)),
+    );
+    return [...merged, ...remaining];
+  }, [basePickerModels, extraPickerModels]);
+  const [project, setProject] = useState(null);
+  const [model, setModel] = useState(() => {
+    if (initialSelection) {
+      return findPickerModel(pickerModels, initialSelection.pickerKey) ?? initialSelection;
+    }
+    if (sessionSelection) return sessionSelection;
+    if (initialProvider) {
+      const bound = findPickerModel(
+        pickerModels,
+        `provider:${initialProvider.id}:${initialProvider.modelId}`,
+      );
+      if (bound) return bound;
+    }
+    return resolveModel(offline ? "local" : (initialModel ?? initialSession?.modelId ?? "local"));
+  });
+  const modelAvailability = useCallback(
+    (candidate) => {
+      if (!candidate) return false;
+      const target = candidate.providerTarget;
+      if (target?.kind === "custom") {
+        return candidate.available === true && !candidate.targetError;
+      }
+      if (target?.kind === "builtin") {
+        return target.providerId === "ollama" || target.providerId === "matrix"
+          ? true
+          : checkCredentialAvailability(candidate.id);
+      }
+      return checkCredentialAvailability(candidate.id);
+    },
+    [checkCredentialAvailability],
+  );
+  const [hasKey, setHasKey] = useState(() => modelAvailability(model));
   const [history, setHistory] = useState(initialHistory);
   const [inputState, setInputState] = useState(() =>
     createInputState("", promptHistoryFrom(initialHistory)),
@@ -127,7 +240,14 @@ export function MatrixApp({
   const [scopeSelection, setScopeSelection] = useState(0);
   const [visionMode, setVisionMode] = useState("scope");
   const [visionStatus, setVisionStatus] = useState("");
-  const [pickerIndex, setPickerIndex] = useState(() => modelIndex(model.id));
+  const [pickerIndex, setPickerIndex] = useState(() => pickerIndexFor(pickerModels, model));
+  const [manualPicker, setManualPicker] = useState({
+    active: false,
+    text: "",
+    error: "",
+    providerId: null,
+    providerName: null,
+  });
   const [slashIndex, setSlashIndex] = useState(0);
   const [status, setStatus] = useState("");
   const [tokenStats, setTokenStats] = useState(() => normalizeUsage(initialSession?.tokenStats));
@@ -151,6 +271,7 @@ export function MatrixApp({
   const statusTimer = useRef(null);
   const runBaseTokens = useRef({ ...tokenStats });
   const resultHandled = useRef(false);
+  const warnedToolSupport = useRef(new Set());
   const startedInitial = useRef(false);
   const handleEventRef = useRef(null);
   const saveRef = useRef(null);
@@ -168,13 +289,13 @@ export function MatrixApp({
   }, [model]);
   const selectModel = useCallback(
     (chosen) => {
-      const available = checkCredentialAvailability(chosen.id);
+      const available = modelAvailability(chosen);
       modelRef.current = chosen;
       setModel(chosen);
       setHasKey(available);
       return available;
     },
-    [checkCredentialAvailability],
+    [modelAvailability],
   );
   useEffect(() => {
     tokenStatsRef.current = tokenStats;
@@ -479,6 +600,32 @@ export function MatrixApp({
         flash("a run is already active · Ctrl+C aborts it");
         return;
       }
+      if (
+        modelRef.current?.custom &&
+        (!modelRef.current.providerTarget || modelRef.current.targetError)
+      ) {
+        flash(
+          `provider unavailable · ${modelRef.current.targetError ?? "configuration could not be resolved"}`,
+          7000,
+        );
+        return;
+      }
+      if (modelRef.current?.providerTarget?.capabilities?.tools === "unsupported") {
+        flash("This model declares no tool support · choose a tool-capable model for coding", 7000);
+        return;
+      }
+      const target = modelRef.current?.providerTarget;
+      if (target?.capabilities?.tools === "unknown") {
+        const identity = `${target.providerId}\0${target.modelId}\0${target.configDigest ?? ""}`;
+        if (!warnedToolSupport.current.has(identity)) {
+          if (warnedToolSupport.current.size >= MAX_MANUAL_PICKER_MODELS) {
+            const oldest = warnedToolSupport.current.values().next().value;
+            if (oldest !== undefined) warnedToolSupport.current.delete(oldest);
+          }
+          warnedToolSupport.current.add(identity);
+          flash("Tool support is unverified for this model · run providers test to check", 7000);
+        }
+      }
       const userMessage = {
         id: `user-${Date.now()}`,
         role: "user",
@@ -513,6 +660,7 @@ export function MatrixApp({
         task: clean,
         project: runProject,
         model: modelRef.current,
+        providerTarget: modelRef.current?.providerTarget ?? null,
         autoApprove: autoApproveRef.current,
         extraContext: historyRef.current,
       });
@@ -848,21 +996,23 @@ export function MatrixApp({
           break;
         case "/model":
           if (arg) {
-            const found = resolveModel(arg);
+            const picked = findPickerModel(pickerModels, arg);
+            const found = picked ?? resolveModel(arg);
             if (
               found &&
-              (found !== LOCAL_MODEL ||
+              (picked ||
+                found !== LOCAL_MODEL ||
                 arg.toLowerCase().includes("local") ||
                 arg.toLowerCase().includes("forge"))
             ) {
               selectModel(found);
-              flash(`model · ${found.name}`);
+              flash(`model · ${found.name}${found.custom ? ` · ${found.providerName}` : ""}`);
               break;
             }
           }
           setHasKey(checkCredentialAvailability(modelRef.current.id));
           setReturnScreen(screenRef.current);
-          setPickerIndex(modelIndex(modelRef.current?.id));
+          setPickerIndex(pickerIndexFor(pickerModels, modelRef.current));
           setScreen("model");
           break;
         case "/undo":
@@ -888,6 +1038,7 @@ export function MatrixApp({
       exit,
       flash,
       openScope,
+      pickerModels,
       resetAutoApprove,
       runDoctorCommand,
       runTestsDirect,
@@ -942,11 +1093,172 @@ export function MatrixApp({
       setScreen(returnScreen);
       return;
     }
-    setHasKey(checkCredentialAvailability(modelRef.current.id));
+    setHasKey(modelAvailability(modelRef.current));
     setReturnScreen(screenRef.current);
-    setPickerIndex(modelIndex(modelRef.current?.id));
+    setPickerIndex(pickerIndexFor(pickerModels, modelRef.current));
     setScreen("model");
-  }, [checkCredentialAvailability, returnScreen]);
+  }, [modelAvailability, pickerModels, returnScreen]);
+
+  useEffect(() => {
+    if (screen !== "model")
+      setManualPicker((previous) =>
+        previous.active ? { ...previous, active: false, text: "", error: "" } : previous,
+      );
+  }, [screen]);
+
+  const beginManualPicker = useCallback(() => {
+    const chosen = pickerModels[Math.min(Math.max(0, pickerIndex), pickerModels.length - 1)];
+    if (!chosen) return;
+    setManualPicker({
+      active: true,
+      text: "",
+      error: "",
+      providerId: chosen.providerId ?? chosen.provider ?? "matrix",
+      providerName: chosen.providerName ?? chosen.provider ?? "this provider",
+    });
+  }, [pickerIndex, pickerModels]);
+
+  const submitManualPicker = useCallback(() => {
+    const providerId = manualPicker.providerId;
+    const query = manualPicker.text;
+    if (!providerId) return;
+    if (manualPicker.error) return;
+    if (!query.trim()) {
+      setManualPicker((previous) => ({ ...previous, error: "enter an exact model id" }));
+      return;
+    }
+    try {
+      const target = resolveProviderSelection({
+        providerId,
+        modelQuery: query,
+        config: providerConfig,
+      }).target;
+      const available =
+        target.kind === "custom"
+          ? isProviderCredentialAvailable(target, process.env)
+          : target.kind === "builtin"
+            ? target.providerId === "ollama" || target.providerId === "matrix"
+              ? true
+              : checkCredentialAvailability(target.modelId)
+            : true;
+      const candidate = pickerModelFromTarget(target, {
+        source: "manual",
+        available,
+        description: `Manual exact model on ${target.providerName}`,
+        observation: pickerObservation(target, providerConfig),
+      });
+      const existing = pickerModels.find((entry) => pickerKeyFor(entry) === candidate.pickerKey);
+      const chosen = target.kind === "custom" && existing ? existing : candidate;
+      if (chosen === candidate) {
+        setExtraPickerModels((previous) =>
+          [
+            ...previous.filter((entry) => pickerKeyFor(entry) !== candidate.pickerKey),
+            candidate,
+          ].slice(-MAX_MANUAL_PICKER_MODELS),
+        );
+      }
+      const selected = selectModel(chosen);
+      setManualPicker({ active: false, text: "", error: "", providerId: null, providerName: null });
+      setScreen(returnScreen);
+      if (chosen.remote && !selected) {
+        flash(`${chosen.name} needs a key for ${chosen.providerName ?? "this provider"}`, 7000);
+      } else {
+        flash(`model · ${chosen.name} · ${chosen.providerName}`);
+      }
+    } catch (error) {
+      setManualPicker((previous) => ({
+        ...previous,
+        error: error?.message ?? "could not resolve that provider model",
+      }));
+    }
+  }, [
+    checkCredentialAvailability,
+    flash,
+    manualPicker.providerId,
+    manualPicker.error,
+    manualPicker.text,
+    pickerModels,
+    providerConfig,
+    returnScreen,
+    selectModel,
+  ]);
+
+  const reloadProviderPicker = useCallback(() => {
+    const home = matrixHome();
+    const loaded = loadProviderConfig({ home });
+    const config = loaded.status === "valid" ? loaded.config : null;
+    const catalog = buildProviderCatalog({ home, env: process.env, loaded });
+    const focused = pickerModels[pickerIndex];
+    const current = modelRef.current;
+    const nextModels = buildPickerModels({ catalog, config });
+    const nextIndex = nextModels.findIndex(
+      (entry) => pickerKeyFor(entry) === pickerKeyFor(focused),
+    );
+    setProviderConfig(config);
+    setProviderCatalog(catalog);
+    setExtraPickerModels([]);
+    setPickerIndex(nextIndex >= 0 ? nextIndex : 0);
+    if (current?.custom) {
+      const profile = config?.providers.find((entry) => entry.id === current.providerId);
+      if (!profile || targetDigest(profile) !== current.providerTarget?.configDigest) {
+        selectModel({
+          ...current,
+          targetError: "provider configuration changed; reselect a model",
+        });
+      } else {
+        const replacement = nextModels.find(
+          (entry) => pickerKeyFor(entry) === pickerKeyFor(current),
+        );
+        if (replacement) selectModel(replacement);
+        else {
+          const target = resolveProviderSelection({
+            providerId: profile.id,
+            modelQuery: current.id,
+            config,
+          }).target;
+          const manual = pickerModelFromTarget(target, {
+            source: "manual",
+            available: isProviderCredentialAvailable(target, process.env),
+            observation: pickerObservation(target, config),
+          });
+          setExtraPickerModels([manual]);
+          selectModel(manual);
+        }
+      }
+    }
+    flash(
+      loaded.status === "invalid"
+        ? `provider reload failed · ${loaded.error.message}`
+        : "providers reloaded",
+      7000,
+    );
+  }, [flash, pickerIndex, pickerModels, selectModel]);
+
+  const savePickerModel = useCallback(async () => {
+    const chosen = pickerModels[Math.min(Math.max(0, pickerIndex), pickerModels.length - 1)];
+    if (!chosen?.custom || !chosen.providerTarget || chosen.targetError) {
+      flash("select a custom provider model to save", 7000);
+      return;
+    }
+    try {
+      const home = matrixHome();
+      const loaded = loadProviderConfig({ home });
+      if (loaded.status !== "valid") throw new Error("provider configuration is unavailable");
+      const profile = loaded.config.providers.find((entry) => entry.id === chosen.providerId);
+      if (!profile || targetDigest(profile) !== chosen.providerTarget.configDigest) {
+        throw new Error("provider configuration changed; reload and reselect");
+      }
+      await addProviderModel(
+        profile.id,
+        { id: chosen.id },
+        { home, expectedDigest: loaded.digest },
+      );
+      reloadProviderPicker();
+      flash(`saved ${chosen.id} to ${profile.name}`, 7000);
+    } catch (error) {
+      flash(`could not save model · ${error?.message ?? "unknown error"}`, 7000);
+    }
+  }, [flash, pickerIndex, pickerModels, reloadProviderPicker]);
 
   useInput((ch, key) => {
     const mouse = parseTerminalMouse(ch);
@@ -963,7 +1275,7 @@ export function MatrixApp({
         } else if (screen === "permission") {
           setPermissionScroll((offset) => Math.max(0, offset - 3));
         } else if (screen === "model") {
-          setPickerIndex((index) => (index - 1 + MODELS.length) % MODELS.length);
+          setPickerIndex((index) => (index - 1 + pickerModels.length) % pickerModels.length);
         } else if (screen === "scope") {
           setScopeSelection((index) => Math.max(0, index - 1));
         } else if (screen === "swarm") {
@@ -985,7 +1297,7 @@ export function MatrixApp({
             Math.min(Math.max(0, permissionBounds.total - permissionBounds.height), offset + 3),
           );
         } else if (screen === "model") {
-          setPickerIndex((index) => (index + 1) % MODELS.length);
+          setPickerIndex((index) => (index + 1) % pickerModels.length);
         } else if (screen === "scope") {
           const scopes = (scopeData.parsed?.flat ?? []).filter((item) => item.kind !== "module");
           setScopeSelection((index) => Math.min(Math.max(0, scopes.length - 1), index + 1));
@@ -994,6 +1306,51 @@ export function MatrixApp({
         } else if (screen === "vision") {
           cycleVision(1);
         }
+      }
+      return;
+    }
+
+    // Exact-ID entry owns printable keys while active; Ctrl+C still falls
+    // through to the ordinary abort/quit path.
+    if (screen === "model" && manualPicker.active && !(key.ctrl && ch === "c")) {
+      if (key.escape) {
+        setManualPicker({
+          active: false,
+          text: "",
+          error: "",
+          providerId: null,
+          providerName: null,
+        });
+        return;
+      }
+      if (key.return) {
+        submitManualPicker();
+        return;
+      }
+      if (key.backspace || key.delete) {
+        setManualPicker((previous) => ({
+          ...previous,
+          text: previous.text.slice(0, -1),
+          error: "",
+        }));
+        return;
+      }
+      if (typeof ch === "string" && ch.length > 0 && !key.ctrl && !key.meta) {
+        const printable = Array.from(ch)
+          .filter((character) => character >= " " && character !== "\x7f")
+          .join("");
+        if (printable) {
+          setManualPicker((previous) => {
+            const text = `${previous.text}${printable}`;
+            return text.length > PROVIDER_LIMITS.modelIdChars
+              ? {
+                  ...previous,
+                  error: `model ID exceeds ${PROVIDER_LIMITS.modelIdChars} characters`,
+                }
+              : { ...previous, text, error: "" };
+          });
+        }
+        return;
       }
       return;
     }
@@ -1070,26 +1427,51 @@ export function MatrixApp({
         setScreen(action.screen);
         return;
       case "picker-step":
-        setPickerIndex((index) => (index + action.delta + MODELS.length) % MODELS.length);
+        setPickerIndex(
+          (index) => (index + action.delta + pickerModels.length) % pickerModels.length,
+        );
         return;
       case "picker-page":
         setPickerIndex((index) =>
           action.delta < 0
             ? Math.max(0, index + action.delta)
-            : Math.min(MODELS.length - 1, index + action.delta),
+            : Math.min(pickerModels.length - 1, index + action.delta),
         );
         return;
       case "picker-edge":
-        setPickerIndex(action.edge === "home" ? 0 : MODELS.length - 1);
+        setPickerIndex(action.edge === "home" ? 0 : pickerModels.length - 1);
+        return;
+      case "picker-manual-start":
+        beginManualPicker();
+        return;
+      case "picker-reload":
+        reloadProviderPicker();
+        return;
+      case "picker-save-model":
+        void savePickerModel();
         return;
       case "model-select": {
-        const chosen = MODELS[Math.min(Math.max(0, pickerIndex), MODELS.length - 1)];
+        const chosen = pickerModels[Math.min(Math.max(0, pickerIndex), pickerModels.length - 1)];
+        if (chosen?.providerPlaceholder) {
+          flash("press e to enter an exact model ID for this provider", 7000);
+          return;
+        }
         const available = selectModel(chosen);
         setScreen(returnScreen);
-        if (chosen.remote && !available) {
-          flash(`${chosen.name} needs an OpenRouter key · Local Forge remains available`, 7000);
+        if (chosen.custom && !chosen.providerTarget) {
+          flash(
+            `${chosen.providerName} is unavailable · ${chosen.targetError ?? "configuration could not be resolved"}`,
+            7000,
+          );
+        } else if (chosen.remote && !available) {
+          flash(
+            `${chosen.name} needs a key for ${chosen.providerName ?? "OpenRouter"} · Local Forge remains available`,
+            7000,
+          );
         } else {
-          flash(`model · ${chosen.name}${chosen.free ? " · free tier" : ""}`);
+          flash(
+            `model · ${chosen.name}${chosen.custom ? ` · ${chosen.providerName}` : chosen.free ? " · free tier" : ""}`,
+          );
         }
         return;
       }
@@ -1344,9 +1726,17 @@ export function MatrixApp({
         testResult,
         modelName: model.name,
         visionStatus,
-        models: MODELS,
+        models: pickerModels,
+        activeKey: pickerKeyFor(model),
         pickerIndex,
         hasKey,
+        manual: manualPicker.active
+          ? {
+              providerName: manualPicker.providerName,
+              text: manualPicker.text,
+              error: manualPicker.error,
+            }
+          : null,
         session: initialSession,
         status,
       }),

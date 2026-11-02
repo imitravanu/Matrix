@@ -71,6 +71,9 @@ export function decideKeyboard(context, ch, key) {
     if (key.home || ch === "g") return { type: "picker-edge", edge: "home" };
     if (key.end || ch === "G") return { type: "picker-edge", edge: "end" };
     if (key.return) return { type: "model-select" };
+    if (ch === "e") return { type: "picker-manual-start" };
+    if (ch === "r") return { type: "picker-reload" };
+    if (ch === "s") return { type: "picker-save-model" };
     if (key.escape || ch === "m") return { type: "return-screen" };
     return handled;
   }
@@ -174,7 +177,7 @@ export function decideKeyboard(context, ch, key) {
   if (key.meta && !key.ctrl) {
     if (ch === "o" || ch === "O") return { type: "toggle-output" };
     if ((ch === "h" || ch === "H") && !running) return { type: "open-help" };
-    if ((ch === "m" || ch === "M") && !running) return { type: "toggle-model" };
+    if (ch === "m" || ch === "M") return { type: "toggle-model" };
     if ((ch === "u" || ch === "U") && !running) return { type: "undo" };
     if ((ch === "f" || ch === "F") && running) {
       return { type: hasLiveEdit ? "toggle-diff" : "toggle-thoughts" };

@@ -14,12 +14,14 @@ From the Matrix source checkout:
 npm run eval                       # default 16-case eval + strict baseline comparison
 node eval/run.mjs --json           # the same run, with the sanitized JSON report on stdout
 node eval/run.mjs --stress         # separate opt-in 10,000-file stress profile
+npm run eval:provider -- --provider <id> --model <exact-id>   # explicit one-run provider evidence
 node --test test/eval.test.mjs     # focused tests; runs only one small eval smoke case
 ```
 
 `npm run eval` is exactly `node eval/run.mjs`. No live-provider credentials, Python packages, or
 network access are required. The default run is intentionally short; wall time is machine-dependent
-and is not an SLA. Stress is never selected by default.
+and is not an SLA. Stress is never selected by default. `npm run eval:provider` is a separate
+explicit opt-in; without `--provider` and `--model` it exits with usage and makes no request.
 
 Artifacts:
 
@@ -27,6 +29,7 @@ Artifacts:
 - `eval/baselines/stress-v1.json` — separately reviewed stress expectations.
 - `eval/reports/default.json` and `default.txt` — generated latest default report.
 - `eval/reports/stress.json` and `stress.txt` — generated opt-in stress report, when run.
+- `eval/reports/provider.json` and `provider.txt` — generated latest explicit provider run.
 
 `eval/reports/` is generated evidence and is gitignored; only reviewed baselines are versioned. CI
 uploads the sanitized default report on failure. JSON and text reports contain no raw provider request bodies, credentials,
@@ -123,9 +126,40 @@ Stress uses 10,000 deterministic hard-linked (or copied, where links are unavail
 index budgets. It remains local and has its own fixture digest/baseline, so opting in cannot weaken
 or silently expand the default case set.
 
-There is deliberately no live-provider runner or `live` profile. A future live adapter must be a
-separate explicit opt-in interface with its own evidence class, authorized low-risk fixtures,
-credential/redaction policy, exact provider/model/date metadata, and separate reports. It must not
-reuse mocked results, invent missing samples, alter this default baseline, or generalize one model's
-quality/price/availability to another. Until such an interface exists, live quality evidence is
-simply absent.
+The default eval has no live-provider runner or `live` profile. `npm run eval:provider -- --provider
+<id> --model <exact>` is a separate explicit opt-in interface: it runs one small, deterministic
+coding task through the real controller/model agent against the configured target, in a temporary
+workspace with shell commands disabled. Only the task source `src/bounds.js` may be edited;
+every other edit proposal is denied and fails the scope check. It sends no repository contents,
+records the provider/model/config digest, task revision/digest, per-check status, outcome,
+verification and usage in `eval/reports/provider.json`, and never touches the default baseline.
+The exact credential and endpoint bound before the run are the ones execution uses; a
+caller-supplied credential is not replaced by `process.env`. The fixture test file and
+`package.json` test runner must remain byte-identical and may receive no applied edit; a
+weakened test or substituted runner fails the run even when the run's own verification passes.
+Scoring also runs the original fixture test independently against the final source bytes, using
+the original test file and runner files, so a model cannot select the verification command. That
+run goes through the shared trusted test path: exact-plan authorization, a minimal allowlisted
+child environment with a disposable home, bounded and redacted output, cancellation, trust and
+execution audits, and owned process-group cleanup on normal exit, timeout and cancellation.
+Both test runs receive an allowlisted environment, excluding ambient provider credentials
+regardless of their variable names. This is not a filesystem or network sandbox for model-written
+code. The authoritative runner cleans up owned descendants. Its evidence class is `opt-in-provider`; it is not availability, quality, pricing,
+context-length or latency evidence, and one run is not generalized to another model. A fake-provider
+loopback coding run is covered deterministically by `test/provider-eval.test.mjs`; live runs remain
+explicitly user-authorized and are never required for the default gate. `MATRIX_PROVIDER_EVAL_REPORTS`
+overrides the report directory for an isolated run; tests use a temporary directory and never write
+into the checked-out `eval/reports/`.
+
+Provider task revision v4 also requires a pure-function behavioral gate. Submitted
+ES modules run in a separate Node child using a VM context without Node APIs,
+imports, or runtime code generation. The outer harness checks returned arrays for
+four inputs. Early process exit and forged TAP cannot satisfy this gate. A VM is
+not a general security sandbox; the ordinary coding/test run still requires trusted
+execution. The JSON report includes `behavioralVerification` alongside the original
+fixture test result, and both must pass for task success.
+
+The v4 gate uses a context with a null prototype and removes its default console.
+Only primitive serialized results cross into the assertion harness, under the VM
+execution timeout. Both verification runs require a per-run completion receipt
+emitted after every assertion; a zero exit status alone fails verification.

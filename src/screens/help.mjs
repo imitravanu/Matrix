@@ -19,6 +19,7 @@ const KEYS = [
   ["Alt+3/4", "patch gate / swarm lanes"],
   ["Alt+5/6", "scope lens / pixel vision"],
   ["Alt+M", "model router (or /model)"],
+  ["e · s · r", "in model router: exact ID / save model / reload providers"],
   ["Alt+U", "undo last applied patch (or /undo)"],
   ["Alt+F / F", "fold while running / fold at the patch gate"],
   ["y · a · n", "apply patch / apply all this run / deny"],

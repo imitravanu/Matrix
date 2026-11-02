@@ -22,36 +22,39 @@ Matrix is built around four constraints:
 
 ## Runtime map
 
-| Area              | File                                                  | Responsibility                                                                           |
-| ----------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| CLI               | `bin/matrix.mjs`                                      | Interactive, headless, tour, dump, vision, smoke, bench, doctor, sessions.               |
-| CLI parser        | `lib/cli.mjs`                                         | Subcommands, flags, validation, help text.                                               |
-| Project index     | `lib/project.mjs`                                     | Budgeted workspace walk, language counts, test-runner detection, git context.            |
-| Structural parser | `lib/scope.mjs`                                       | Python indentation scopes; masked JS/TS brace scopes; Rust/Go/Ruby declarations.         |
-| Task layer        | `lib/task.mjs`                                        | Intent classification, candidate scoring, grounded search results.                       |
-| Local engine      | `lib/local-agent.mjs`                                 | Deterministic inspect/propose/apply/verify loop.                                         |
-| Remote engine     | `lib/model-agent.mjs`, `lib/openrouter.mjs`           | Streaming OpenRouter loop, audited tools, usage accounting.                              |
-| Controller        | `lib/controller.mjs`                                  | One active run, approval lifecycle, abort, undo stack, session re-arm.                   |
-| Safety            | `lib/workspace.mjs`                                   | Path containment, atomic writes, mode preservation.                                      |
-| Diff              | `lib/diff.mjs`                                        | Line diff and hunks used by the gate and cards.                                          |
-| Process           | `lib/process.mjs`                                     | Bounded child processes, streaming output, test-result parsing.                          |
-| Command policy    | `lib/command-policy.mjs`, `lib/command-execution.mjs` | Exact one-shot argv/script approval, audits, bounded results and outcome classification. |
-| Linux sandbox     | `lib/linux-bwrap.mjs`, `lib/linux-snapshot.mjs`       | Required namespaces, minimal mounts, disposable no-follow snapshots and cleanup.         |
-| Sessions          | `lib/session.mjs`                                     | `MATRIX_HOME`, atomic JSON sessions, backups, run event logs.                            |
-| Application       | `src/matrix.mjs`                                      | React state/effects, controller and I/O composition; no presentational frame ownership.  |
-| Presentation      | `src/frame.mjs`, `src/views.mjs`                      | `Frame`/`ScreenView`, primary/all-view routing, and shared scope-source definitions.     |
-| Interaction       | `src/keyboard.mjs`, `src/event-reducer.mjs`           | Pure keyboard decisions and React-independent run-event effect reduction.                |
-| UI projections    | `src/session-codec.mjs`, `src/result-projection.mjs`  | Transcript/session, usage, retained-output, and public result projections.               |
-| Cards             | `src/cards.mjs`                                       | Pure card builders; no terminal or filesystem side effects.                              |
-| Screens           | `src/screens/*.mjs`                                   | Empty, chat, permission, swarm, scope and vision views.                                  |
-| Renderer          | `src/render.mjs`                                      | Render-only frame imports, fixed geometry, and geometry checks (`checkFrame`).           |
-| Panels            | `lib/graph.mjs`                                       | Real workspace/scope/telemetry canvases and adaptive headers.                            |
-| Raster            | `lib/raster.mjs`                                      | Pixel buffer, primitives, half-block truecolor, PNG encoder.                             |
-| Swarm state       | `lib/swarm.mjs`                                       | Projects run events into three lanes with bounded logs.                                  |
-| Doctor            | `lib/doctor.mjs`                                      | Runtime, workspace, git, test, credential, session-home and demo checks.                 |
-| Credentials       | `lib/credentials.mjs`                                 | One transport-free provider/key lookup shared by execution and cached UI availability.   |
-| Public contracts  | `lib/contracts.mjs`                                   | Type-only JSDoc project/result/event/controller contracts; no runtime dependency.        |
-| Engineering gates | `scripts/check-*.mjs`                                 | Recursive syntax checks, fail-closed coverage ratchets, and dry-run pack inspection.     |
+| Area               | File                                                  | Responsibility                                                                                                                                                          |
+| ------------------ | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CLI                | `bin/matrix.mjs`                                      | Interactive, headless, tour, dump, vision, smoke, bench, doctor, sessions.                                                                                              |
+| CLI parser         | `lib/cli.mjs`                                         | Subcommands, flags, validation, help text.                                                                                                                              |
+| Project index      | `lib/project.mjs`                                     | Budgeted workspace walk, language counts, test-runner detection, git context.                                                                                           |
+| Structural parser  | `lib/scope.mjs`                                       | Python indentation scopes; masked JS/TS brace scopes; Rust/Go/Ruby declarations.                                                                                        |
+| Task layer         | `lib/task.mjs`                                        | Intent classification, candidate scoring, grounded search results.                                                                                                      |
+| Local engine       | `lib/local-agent.mjs`                                 | Deterministic inspect/propose/apply/verify loop.                                                                                                                        |
+| Remote engine      | `lib/model-agent.mjs`, `lib/openrouter.mjs`           | Streaming OpenRouter loop, audited tools, usage accounting.                                                                                                             |
+| Provider profiles  | `lib/provider-config.mjs`, `lib/provider-catalog.mjs` | Private profile file, validation/digests, catalog and explicit discovery cache. Complete-profile CLI replacement requires the previously observed configuration digest. |
+| Provider transport | `lib/provider-transport.mjs`                          | Named-profile request binding, endpoint/auth freeze, redirect refusal; shared SSE core.                                                                                 |
+| Provider picker    | `src/provider-picker.mjs`, `lib/provider-session.mjs` | Built-in/custom picker entries, exact targets, explicit save/reload, and session identity/refusal checks.                                                               |
+| Controller         | `lib/controller.mjs`                                  | One active run, approval lifecycle, abort, undo stack, session re-arm.                                                                                                  |
+| Safety             | `lib/workspace.mjs`                                   | Path containment, atomic writes, mode preservation.                                                                                                                     |
+| Diff               | `lib/diff.mjs`                                        | Line diff and hunks used by the gate and cards.                                                                                                                         |
+| Process            | `lib/process.mjs`                                     | Bounded child processes, streaming output, test-result parsing.                                                                                                         |
+| Command policy     | `lib/command-policy.mjs`, `lib/command-execution.mjs` | Exact one-shot argv/script approval, audits, bounded results and outcome classification.                                                                                |
+| Linux sandbox      | `lib/linux-bwrap.mjs`, `lib/linux-snapshot.mjs`       | Required namespaces, minimal mounts, disposable no-follow snapshots and cleanup.                                                                                        |
+| Sessions           | `lib/session.mjs`                                     | `MATRIX_HOME`, atomic JSON sessions, backups, run event logs.                                                                                                           |
+| Application        | `src/matrix.mjs`                                      | React state/effects, controller and I/O composition; no presentational frame ownership.                                                                                 |
+| Presentation       | `src/frame.mjs`, `src/views.mjs`                      | `Frame`/`ScreenView`, primary/all-view routing, and shared scope-source definitions.                                                                                    |
+| Interaction        | `src/keyboard.mjs`, `src/event-reducer.mjs`           | Pure keyboard decisions and React-independent run-event effect reduction.                                                                                               |
+| UI projections     | `src/session-codec.mjs`, `src/result-projection.mjs`  | Transcript/session, usage, retained-output, and public result projections.                                                                                              |
+| Cards              | `src/cards.mjs`                                       | Pure card builders; no terminal or filesystem side effects.                                                                                                             |
+| Screens            | `src/screens/*.mjs`                                   | Empty, chat, permission, swarm, scope and vision views.                                                                                                                 |
+| Renderer           | `src/render.mjs`                                      | Render-only frame imports, fixed geometry, and geometry checks (`checkFrame`).                                                                                          |
+| Panels             | `lib/graph.mjs`                                       | Real workspace/scope/telemetry canvases and adaptive headers.                                                                                                           |
+| Raster             | `lib/raster.mjs`                                      | Pixel buffer, primitives, half-block truecolor, PNG encoder.                                                                                                            |
+| Swarm state        | `lib/swarm.mjs`                                       | Projects run events into three lanes with bounded logs.                                                                                                                 |
+| Doctor             | `lib/doctor.mjs`                                      | Runtime, workspace, git, test, credential, session-home and demo checks.                                                                                                |
+| Credentials        | `lib/credentials.mjs`                                 | One transport-free provider/key lookup shared by execution and cached UI availability.                                                                                  |
+| Public contracts   | `lib/contracts.mjs`                                   | Type-only JSDoc project/result/event/controller contracts; no runtime dependency.                                                                                       |
+| Engineering gates  | `scripts/check-*.mjs`                                 | Recursive syntax checks, fail-closed coverage ratchets, and dry-run pack inspection.                                                                                    |
 
 The UI is split so that card construction can be tested without a terminal, and so screen
 rendering can be checked at fixed dimensions with `MATRIX_COLS`/`MATRIX_ROWS` or `checkFrame`.
@@ -404,8 +407,9 @@ invents a second concurrent model run to fill a lane.
 
 `MATRIX_HOME` defaults to `~/.matrix`:
 
-- `sessions/*.json` — session id, workspace, project summary, transcript cards, model, token stats,
-  metrics, and versioned `undoRun` recovery entries.
+- `sessions/*.json` — session id, workspace, project summary, transcript cards, model, optional
+  provider identity (`id`, exact wire model, configuration digest), token stats, metrics, and
+  versioned `undoRun` recovery entries. The digest is checked on resume; no key value is stored.
 - `backups/` — exact pre-edit file bytes.
 - `runs/` — per-run event logs written for later inspection.
 

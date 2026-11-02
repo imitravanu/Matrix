@@ -133,6 +133,23 @@ test("all eight screens render cleanly at four terminal geometries", () => {
   }
 });
 
+test("provider picker controls remain visible at supported terminal sizes", () => {
+  for (const [columns, rows] of [
+    [40, 20],
+    [60, 22],
+    [80, 26],
+    [100, 30],
+    [140, 40],
+  ]) {
+    const frame = renderScreen("model", fixture, { columns, rows });
+    assert.equal(checkFrame(frame, { columns, rows }).ok, true);
+    const text = visible(frame).join("\n");
+    assert.match(text, /e:exact/);
+    assert.match(text, /s:save/);
+    assert.match(text, /r:reload/);
+  }
+});
+
 test("the narrow scope lens keeps its header and every selected scope visible", () => {
   const labels = ["class DataProcessor", "__init__", "process_bounds", "flush_window"];
   for (const [scopeSelection, label] of labels.entries()) {

@@ -6,6 +6,20 @@ import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from "no
 import { join } from "node:path";
 
 import { MatrixApp } from "../src/matrix.mjs";
+import {
+  PROVIDER_SCHEMA_VERSION,
+  resolveProviderSelection,
+  validateProviderConfig,
+} from "../lib/provider-contracts.mjs";
+import { pickerModelFromTarget } from "../src/provider-picker.mjs";
+import { sessionProviderIdentity } from "../lib/provider-session.mjs";
+import {
+  addProviderProfile,
+  loadProviderConfig,
+  replaceProviderProfile,
+} from "../lib/provider-config.mjs";
+import { buildProviderCatalog } from "../lib/provider-catalog.mjs";
+import { probeProvider } from "../lib/provider-probe.mjs";
 import { listSessions, loadLatestSession, loadSession } from "../lib/session.mjs";
 import { inspectCommandPlan } from "../lib/command-policy.mjs";
 import {
@@ -25,6 +39,39 @@ const TASK = "Fix the off-by-one in the bounds slice in src/processor.py";
 const BUGGY = "context = bounds[0:len(bounds) - 1]";
 const FIXED = "context = bounds[0:len(bounds)]";
 const TIMING_REGRESSION_DELAY_MS = 80;
+
+function labProvider() {
+  const providerConfig = validateProviderConfig({
+    schemaVersion: PROVIDER_SCHEMA_VERSION,
+    providers: [
+      {
+        id: "lab",
+        name: "Lab",
+        baseUrl: "https://lab.example/v1",
+        auth: { type: "none" },
+        models: [{ id: "vendor/manual", name: "Lab Manual", capabilities: { tools: "supported" } }],
+      },
+    ],
+  });
+  const providerCatalog = {
+    status: "valid",
+    entries: [
+      {
+        providerId: "lab",
+        providerName: "Lab",
+        source: "custom",
+        modelId: "vendor/manual",
+        name: "Lab Manual",
+        contextWindow: 200_000,
+        pricing: null,
+        capabilities: { tools: "supported" },
+        available: true,
+        legacy: false,
+      },
+    ],
+  };
+  return { providerConfig, providerCatalog };
+}
 
 let isolatedHome;
 let restoreProviderEnv;
@@ -160,6 +207,10 @@ function setup(
     offline = true,
     initialModel = null,
     enableCommands = false,
+    providerCatalog = null,
+    providerConfig = null,
+    initialProvider = null,
+    initialSelection = null,
   } = {},
 ) {
   const copy = demo ?? copyDemo("matrix-app-");
@@ -174,6 +225,10 @@ function setup(
       offline,
       initialModel,
       enableCommands,
+      providerCatalog,
+      providerConfig,
+      initialProvider,
+      initialSelection,
     }),
   );
   let closed = false;
@@ -646,6 +701,444 @@ test("model picker, /test, /doctor, help and screen keys are wired to real state
   app.stdin.write("\x1b2");
   await waitFrame(app, /crucible/i, "the chat screen key");
   assert.equal(frameText(app).includes("PATCH GATE"), false);
+});
+
+test("named provider models appear in the picker and can be selected", async (t) => {
+  const { providerConfig, providerCatalog } = labProvider();
+  const { app } = setup(t, { providerCatalog, providerConfig });
+  await waitFrame(app, /S P A T I A L/, "the empty screen");
+
+  app.stdin.write("\x1bm");
+  await waitFrame(app, /MODEL ROUTER/, "the model picker");
+  app.stdin.write("\u001b[F");
+  const picker = await waitFrame(app, /Lab Manual/, "the provider model");
+  assert.match(picker, /\[CUSTOM\]/);
+  assert.match(picker, /Lab/);
+  app.stdin.write("\r");
+  const header = await waitFor(() => {
+    const frame = frameText(app);
+    return /Lab Manual/.test(frame) && !/MODEL ROUTER/.test(frame) ? frame : null;
+  });
+  assert.ok(header, "the selected provider model should be active in the header");
+});
+
+test("a selected provider model runs through the exact provider target", async (t) => {
+  const { providerConfig, providerCatalog } = labProvider();
+  fetchTrap.restore();
+  expectedProviderCalls = 1;
+  const requests = [];
+  fetchTrap = installFetchTrap(async (url, options = {}) => {
+    requests.push({ url: String(url), options });
+    return sseResponse(contentChunks("provider run ok"));
+  });
+  const { app } = setup(t, { providerCatalog, providerConfig });
+  await waitFrame(app, /S P A T I A L/, "the empty screen");
+
+  app.stdin.write("\x1bm");
+  await waitFrame(app, /MODEL ROUTER/, "the model picker");
+  app.stdin.write("\u001b[F");
+  await waitFrame(app, /Lab Manual/, "the provider model");
+  app.stdin.write("\r");
+  await waitFrame(app, /Lab Manual/, "the selected provider model");
+
+  await typeLine(app, "Say hello through the provider");
+  await waitFrame(app, /provider run ok/, "the provider response", 20000);
+  assert.equal(requests.length, 1);
+  assert.match(requests[0].url, /\/v1\/chat\/completions$/);
+  assert.equal(
+    Object.keys(requests[0].options.headers ?? {}).some(
+      (name) => name.toLowerCase() === "authorization",
+    ),
+    false,
+    "anonymous providers must not invent an Authorization header",
+  );
+  assert.equal(JSON.parse(requests[0].options.body).model, "vendor/manual");
+});
+
+test("interactive coding refuses a provider model without tool support", async (t) => {
+  const providerConfig = validateProviderConfig({
+    schemaVersion: PROVIDER_SCHEMA_VERSION,
+    providers: [
+      {
+        id: "lab",
+        name: "Lab",
+        baseUrl: "https://lab.example/v1",
+        auth: { type: "none" },
+        models: [{ id: "text-only", capabilities: { tools: "unsupported" } }],
+      },
+    ],
+  });
+  const target = resolveProviderSelection({
+    providerId: "lab",
+    modelQuery: "text-only",
+    config: providerConfig,
+  }).target;
+  const { app, demo } = setup(t, {
+    providerConfig,
+    initialSelection: pickerModelFromTarget(target, { available: true }),
+  });
+  const file = join(demo.workspace, "src", "processor.py");
+  const before = readFileSync(file, "utf8");
+  await typeLine(app, "Inspect the repository");
+  await waitFrame(app, /declares no tool support/, "the unsupported tools refusal");
+  assert.equal(fetchTrap.calls.length, 0);
+  assert.equal(readFileSync(file, "utf8"), before);
+});
+
+test("a CLI provider preset starts on its exact model without the picker", async (t) => {
+  const { providerConfig, providerCatalog } = labProvider();
+  const target = resolveProviderSelection({
+    providerId: "lab",
+    modelQuery: "vendor/manual",
+    config: providerConfig,
+  }).target;
+  const initialSelection = pickerModelFromTarget(target, {
+    source: "preset",
+    available: true,
+    description: "Explicit --provider lab preset",
+  });
+  const { app } = setup(t, { providerCatalog, providerConfig, initialSelection });
+  const frame = await waitFrame(app, /Lab Manual/, "the preset provider model");
+  assert.equal(frame.includes("MODEL ROUTER"), false);
+});
+
+test("the picker separates declared capability from a failed observed probe and hides stale evidence", async (t) => {
+  const demo = copyDemo("matrix-picker-probe-");
+  const home = join(demo.root, "home");
+  await addProviderProfile(
+    {
+      id: "lab",
+      name: "Lab",
+      baseUrl: "https://lab.example/v1",
+      auth: { type: "none" },
+      models: [{ id: "probe-model", capabilities: { tools: "supported" } }],
+    },
+    { home },
+  );
+  const probe = await probeProvider({
+    home,
+    providerId: "lab",
+    modelId: "probe-model",
+    checks: "tools",
+    fetchImpl: async () => sseResponse(contentChunks("I ignored the requested tool")),
+  });
+  assert.equal(probe.checks.tools.status, "fail");
+  const loaded = loadProviderConfig({ home });
+  const catalog = buildProviderCatalog({ home, loaded });
+  const entry = catalog.entries.find(
+    (model) => model.providerId === "lab" && model.modelId === "probe-model",
+  );
+  assert.equal(entry.capabilities.tools, "supported");
+  assert.equal(entry.observation.tools, "fail");
+  const { app } = setup(t, { demo, providerConfig: loaded.config, providerCatalog: catalog });
+  await waitFrame(app, /S P A T I A L/, "the empty screen");
+  app.stdin.write("\x1bm");
+  await waitFrame(app, /MODEL ROUTER/, "the model picker");
+  app.stdin.write("\u001b[F");
+  await waitFrame(app, /probe tools:fail/, "the failed observed probe");
+  await replaceProviderProfile(
+    "lab",
+    { ...loaded.config.providers[0], baseUrl: "https://changed.example/v1" },
+    { home, expectedDigest: loaded.digest },
+  );
+  app.stdin.write("r");
+  const reloaded = await waitFor(() => {
+    const frame = frameText(app);
+    return frame.includes("probe not run") && !frame.includes("probe tools:fail") ? frame : null;
+  });
+  assert.ok(reloaded, "changing the endpoint hides the previous observation");
+});
+
+test("manual entry refuses an overlong model instead of selecting a truncated ID", async (t) => {
+  const { providerConfig, providerCatalog } = labProvider();
+  const { app } = setup(t, { providerCatalog, providerConfig });
+  await waitFrame(app, /S P A T I A L/, "the empty screen");
+  app.stdin.write("\x1bm");
+  await waitFrame(app, /MODEL ROUTER/, "the model picker");
+  app.stdin.write("\u001b[F");
+  await waitFrame(app, /Lab Manual/, "the provider model");
+  app.stdin.write("e");
+  await waitFrame(app, /Exact model on Lab:/, "manual model entry");
+  app.stdin.write("x".repeat(513));
+  await waitFrame(app, /model ID exceeds 512/, "the length refusal");
+  app.stdin.write("\r");
+  await waitFrame(app, /model ID exceeds 512/, "the entry still refused after Enter");
+  assert.equal(fetchTrap.calls.length, 0);
+});
+
+test("a provider with no listed models allows an exact model to be entered and run", async (t) => {
+  const demo = copyDemo("matrix-empty-provider-");
+  const home = join(demo.root, "home");
+  await addProviderProfile(
+    {
+      id: "lab",
+      name: "Empty Lab",
+      baseUrl: "https://lab.example/v1",
+      auth: { type: "none" },
+      models: [],
+    },
+    { home },
+  );
+  const loaded = loadProviderConfig({ home });
+  fetchTrap.restore();
+  expectedProviderCalls = 1;
+  fetchTrap = installFetchTrap(() => sseResponse(contentChunks("empty provider run complete")));
+  const { app } = setup(t, {
+    demo,
+    providerConfig: loaded.config,
+    providerCatalog: buildProviderCatalog({ home, loaded }),
+  });
+  await waitFrame(app, /S P A T I A L/, "the empty screen");
+  app.stdin.write("\x1bm");
+  await waitFrame(app, /MODEL ROUTER/, "the picker");
+  app.stdin.write("\u001b[F");
+  await waitFrame(app, /Empty Lab/, "the unlisted provider");
+  app.stdin.write("\r");
+  await waitFrame(app, /enter an exact model ID/, "the placeholder refusal");
+  app.stdin.write("e");
+  await waitFrame(app, /Exact model on Empty Lab:/, "manual model entry");
+  app.stdin.write("Vendor/Unlisted:Tag");
+  await waitFrame(app, /Exact model on Empty Lab: Vendor\/Unlisted:Tag/, "the exact model ID");
+  app.stdin.write("\r");
+  await waitFrame(app, /Vendor\/Unlisted:Tag/, "the selected model");
+  await typeLine(app, "Inspect this repository");
+  await waitFrame(app, /empty provider run complete/, "the provider response");
+  assert.equal(JSON.parse(fetchTrap.calls[0][1].body).model, "Vendor/Unlisted:Tag");
+});
+
+test("manual provider models can be saved, reloaded, and require reselection after endpoint changes", async (t) => {
+  const demo = copyDemo("matrix-picker-save-");
+  const home = join(demo.root, "home");
+  await addProviderProfile(
+    {
+      id: "lab",
+      name: "Lab",
+      baseUrl: "https://lab.example/v1",
+      auth: { type: "none" },
+      models: [{ id: "configured" }],
+    },
+    { home },
+  );
+  const loaded = loadProviderConfig({ home });
+  const { app } = setup(t, {
+    demo,
+    providerConfig: loaded.config,
+    providerCatalog: buildProviderCatalog({ home, loaded }),
+  });
+  await waitFrame(app, /S P A T I A L/, "the empty screen");
+  app.stdin.write("\x1bm");
+  await waitFrame(app, /MODEL ROUTER/, "the model picker");
+  app.stdin.write("\u001b[F");
+  await waitFrame(app, /configured/, "the provider model");
+  app.stdin.write("e");
+  await waitFrame(app, /Exact model on Lab:/, "exact-ID entry");
+  app.stdin.write("vendor/manual-new");
+  await waitFrame(app, /Exact model on Lab: vendor\/manual-new/, "the exact model");
+  app.stdin.write("\r");
+  await waitFrame(app, /vendor\/manual-new/, "the selected model");
+  app.stdin.write("\x1bm");
+  await waitFrame(app, /MODEL ROUTER/, "the picker with manual model");
+  app.stdin.write("\u001b[F");
+  app.stdin.write("s");
+  const saved = await waitFor(() =>
+    loadProviderConfig({ home }).config.providers[0].models.some(
+      (entry) => entry.id === "vendor/manual-new",
+    ),
+  );
+  assert.ok(saved, "explicit save persists the exact model");
+  const beforeChange = loadProviderConfig({ home });
+  await replaceProviderProfile(
+    "lab",
+    { ...beforeChange.config.providers[0], baseUrl: "https://changed.example/v1" },
+    { home, expectedDigest: beforeChange.digest },
+  );
+  app.stdin.write("r");
+  await waitFrame(app, /providers reloaded/, "reload confirmation");
+  app.stdin.write("\x1b");
+  await typeLine(app, "Inspect the repository");
+  await waitFrame(app, /configuration changed/, "reselection refusal");
+  assert.equal(fetchTrap.calls.length, 0);
+});
+
+test("reloading and reselecting during a run applies the new endpoint only to the next run", async (t) => {
+  const demo = copyDemo("matrix-picker-pinned-");
+  const home = join(demo.root, "home");
+  await addProviderProfile(
+    {
+      id: "lab",
+      name: "Lab",
+      baseUrl: "https://old.example/v1",
+      auth: { type: "none" },
+      models: [{ id: "pinned-model" }],
+    },
+    { home },
+  );
+  const loaded = loadProviderConfig({ home });
+  const target = resolveProviderSelection({
+    providerId: "lab",
+    modelQuery: "pinned-model",
+    config: loaded.config,
+  }).target;
+  fetchTrap.restore();
+  expectedProviderCalls = 2;
+  let releaseFirst;
+  const requests = [];
+  fetchTrap = installFetchTrap((url) => {
+    requests.push(String(url));
+    if (requests.length === 1)
+      return new Promise((resolve) => {
+        releaseFirst = () => resolve(sseResponse(contentChunks("first run complete")));
+      });
+    return sseResponse(contentChunks("second run complete"));
+  });
+  const { app } = setup(t, {
+    demo,
+    providerConfig: loaded.config,
+    providerCatalog: buildProviderCatalog({ home, loaded }),
+    initialSelection: pickerModelFromTarget(target, { available: true }),
+  });
+  await typeLine(app, "First run");
+  assert.ok(
+    await waitFor(() => requests.length === 1),
+    "the first run must reach the old endpoint",
+  );
+  await waitFrame(app, /Tool support is unverified/, "the unknown tool capability warning");
+  await replaceProviderProfile(
+    "lab",
+    { ...loaded.config.providers[0], baseUrl: "https://new.example/v1" },
+    { home, expectedDigest: loaded.digest },
+  );
+  app.stdin.write("\x1bm");
+  await waitFrame(app, /MODEL ROUTER/, "the picker during the active run");
+  app.stdin.write("r");
+  await waitFrame(app, /providers reloaded/, "the reloaded picker");
+  app.stdin.write("\r");
+  releaseFirst();
+  await waitFrame(app, /first run complete/, "the first run result");
+  await typeLine(app, "Second run");
+  await waitFrame(app, /second run complete/, "the second run result");
+  assert.match(requests[0], /^https:\/\/old\.example\/v1\/chat\/completions$/);
+  assert.match(requests[1], /^https:\/\/new\.example\/v1\/chat\/completions$/);
+});
+
+test("manual exact-ID entry completes a real patch-and-verify workflow", async (t) => {
+  const { providerConfig, providerCatalog } = labProvider();
+  const exact = "Vendor/Model-Y:Free";
+  fetchTrap.restore();
+  expectedProviderCalls = 2;
+  const requests = [];
+  fetchTrap = installFetchTrap(async (url, options = {}) => {
+    requests.push({ url: String(url), options });
+    if (requests.length === 1) {
+      return sseResponse(
+        toolCallChunks("call_manual_edit", "propose_edit", {
+          path: "src/processor.py",
+          start_line: 20,
+          end_line: 21,
+          replacement: `        ${FIXED}\n`,
+          rationale: "include the last valid element",
+        }),
+      );
+    }
+    return sseResponse(contentChunks("manual patch complete"));
+  });
+  const { app, demo } = setup(t, { providerCatalog, providerConfig });
+  const file = join(demo.workspace, "src", "processor.py");
+  const before = readFileSync(file, "utf8");
+  await waitFrame(app, /S P A T I A L/, "the empty screen");
+
+  app.stdin.write("\x1bm");
+  await waitFrame(app, /MODEL ROUTER/, "the model picker");
+  app.stdin.write("\u001b[F");
+  await waitFrame(app, /Lab Manual/, "the configured provider model");
+  app.stdin.write("e");
+  await waitFrame(app, /Exact model on Lab:/, "exact-ID entry for the selected provider");
+  app.stdin.write(exact);
+  await waitFrame(app, new RegExp(`Exact model on Lab: ${exact}`), "the typed exact model ID");
+  app.stdin.write("\r");
+
+  const header = await waitFor(() => {
+    const frame = frameText(app);
+    return frame.includes(exact) && !/MODEL ROUTER/.test(frame) ? frame : null;
+  });
+  assert.ok(header, "the manual model should be active in the header");
+
+  await typeLine(app, TASK);
+  await waitFrame(app, /PATCH GATE/, "the manual-model patch gate");
+  assert.equal(readFileSync(file, "utf8"), before, "nothing changes before approval");
+  app.stdin.write("y");
+  await approveTestTrust(app);
+  await waitFrame(app, /4 passed · 0 failed/, "verification after approval");
+  await waitFrame(app, /manual patch complete/, "the final provider response", 20000);
+
+  assert.equal(requests.length, 2);
+  for (const request of requests) {
+    assert.match(request.url, /\/v1\/chat\/completions$/);
+    assert.equal(JSON.parse(request.options.body).model, exact);
+  }
+  const fixed = readFileSync(file, "utf8");
+  assert.ok(fixed.includes(FIXED));
+  assert.equal(fixed.includes(BUGGY), false);
+});
+
+test("resume restores arbitrary built-in models instead of falling back to Local Forge", async (t) => {
+  for (const [providerId, modelId] of [
+    ["openrouter", "vendor/unlisted"],
+    ["ollama", "llama3.2:8b"],
+  ]) {
+    const target = resolveProviderSelection({ providerId, modelQuery: modelId }).target;
+    const initialProvider = sessionProviderIdentity(pickerModelFromTarget(target));
+    const { app } = setup(t, { initialProvider });
+    const frame = await waitFor(
+      () => {
+        const text = frameText(app);
+        return text.includes(modelId) && !text.includes("Local Forge") ? text : null;
+      },
+      { timeoutMs: 15000, intervalMs: 40 },
+    );
+    assert.ok(
+      frame,
+      `saved ${providerId}/${modelId} did not restore\nlast frame:\n${frameText(app).slice(-3000)}`,
+    );
+  }
+});
+
+test("resume restores an uncatalogued manual model without discovery", async (t) => {
+  const { providerConfig } = labProvider();
+  const exact = "Vendor/Model-Z:Free";
+  const target = resolveProviderSelection({
+    providerId: "lab",
+    modelQuery: exact,
+    config: providerConfig,
+  }).target;
+  const initialProvider = sessionProviderIdentity(pickerModelFromTarget(target));
+  const { app } = setup(t, {
+    providerConfig,
+    providerCatalog: { status: "valid", entries: [] },
+    initialProvider,
+  });
+  const frame = await waitFor(
+    () => {
+      const text = frameText(app);
+      return text.includes(exact) && !text.includes("Local Forge") ? text : null;
+    },
+    { timeoutMs: 15000, intervalMs: 40 },
+  );
+  assert.ok(
+    frame,
+    `uncatalogued manual model did not restore\nlast frame:\n${frameText(app).slice(-3000)}`,
+  );
+});
+
+test("a provider-bound resume starts on the saved model", async (t) => {
+  const { providerConfig, providerCatalog } = labProvider();
+  const { app } = setup(t, {
+    providerCatalog,
+    providerConfig,
+    initialProvider: { id: "lab", modelId: "vendor/manual", digest: "a".repeat(64) },
+  });
+  const frame = await waitFrame(app, /Lab Manual/, "the saved provider model");
+  assert.equal(frame.includes("MODEL ROUTER"), false);
 });
 
 test("/model with an argument switches models without crashing", async (t) => {

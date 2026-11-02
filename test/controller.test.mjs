@@ -10,9 +10,11 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createHash } from "node:crypto";
+import { createServer } from "node:http";
 import { join } from "node:path";
 
 import { createRunController } from "../lib/controller.mjs";
+import { resolveProviderSelection, validateProviderConfig } from "../lib/provider-contracts.mjs";
 import { resolveModel } from "../lib/models.mjs";
 import { detectProject } from "../lib/project.mjs";
 import { backupFile, loadSession, runsDir, saveSession } from "../lib/session.mjs";
@@ -39,6 +41,103 @@ function envHome(t, home) {
     else process.env.MATRIX_HOME = previous;
   });
 }
+
+test("a remote provider target named local never falls back to Local Forge", async (t) => {
+  const requests = [];
+  const server = createServer((req, res) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      requests.push({ url: req.url, body: JSON.parse(Buffer.concat(chunks).toString("utf8")) });
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.write(
+        `data: ${JSON.stringify({ choices: [{ delta: { content: "remote local ok" } }] })}\n\n`,
+      );
+      res.end("data: [DONE]\n\n");
+    });
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const demo = copyDemo();
+  const home = join(demo.root, "home");
+  t.after(async () => {
+    server.closeAllConnections?.();
+    await new Promise((resolve) => server.close(resolve));
+    demo.cleanup();
+  });
+  envHome(t, home);
+
+  const config = validateProviderConfig({
+    schemaVersion: 1,
+    providers: [
+      {
+        id: "lab",
+        baseUrl: `http://127.0.0.1:${server.address().port}/v1`,
+        auth: { type: "none" },
+        models: [{ id: "local" }],
+      },
+    ],
+  });
+  const providerTarget = resolveProviderSelection({
+    providerId: "lab",
+    modelQuery: "local",
+    config,
+  }).target;
+  const controller = createController({ home });
+  t.after(() => controller.dispose());
+
+  const outcome = await controller.start({
+    task: "Say hello through the remote local model",
+    project: detectProject(demo.workspace),
+    model: { id: "local", name: "Lab local", provider: "lab", remote: true },
+    providerTarget,
+    autoApprove: false,
+  });
+  assert.equal(outcome.ok, true, outcome.error);
+  assert.equal(requests.length, 1, "the selected endpoint must receive the run");
+  assert.equal(requests[0].url, "/v1/chat/completions");
+  assert.equal(requests[0].body.model, "local");
+  assert.match(outcome.result.content ?? "", /remote local ok/);
+  assert.doesNotMatch(outcome.result.content ?? "", /Local Forge completed/);
+});
+
+test("controller refuses declared unsupported tools before starting a run", async (t) => {
+  const demo = copyDemo();
+  t.after(() => demo.cleanup());
+  const config = validateProviderConfig({
+    schemaVersion: 1,
+    providers: [
+      {
+        id: "lab",
+        baseUrl: "https://lab.example/v1",
+        auth: { type: "none" },
+        models: [{ id: "text-only", capabilities: { tools: "unsupported" } }],
+      },
+    ],
+  });
+  const target = resolveProviderSelection({
+    providerId: "lab",
+    modelQuery: "text-only",
+    config,
+  }).target;
+  const events = [];
+  const controller = createController({
+    home: join(demo.root, "home"),
+    onEvent: (event) => events.push(event),
+  });
+  t.after(() => controller.dispose());
+  const outcome = await controller.start({
+    task: "Inspect",
+    project: detectProject(demo.workspace),
+    model: { id: "text-only" },
+    providerTarget: target,
+  });
+  assert.equal(outcome.ok, false);
+  assert.match(outcome.error, /no tool support/);
+  assert.deepEqual(events, []);
+});
 
 test("a controller run applies, records events and undoes to exact bytes", async (t) => {
   const demo = copyDemo();

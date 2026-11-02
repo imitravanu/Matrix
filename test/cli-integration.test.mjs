@@ -2,8 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { createServer } from "node:http";
 
+import { resolveProviderSelection, targetDigest } from "../lib/provider-contracts.mjs";
+import { pickerModelFromTarget } from "../src/provider-picker.mjs";
+import { addProviderProfile, loadProviderConfig } from "../lib/provider-config.mjs";
+import { sessionProviderIdentity, validateSessionProvider } from "../lib/provider-session.mjs";
+import { loadSession, saveSession } from "../lib/session.mjs";
 import { PACKAGE_ROOT, copyDemo, makeTempDir } from "./helpers.mjs";
 
 const BIN = join(PACKAGE_ROOT, "bin", "matrix.mjs");
@@ -427,6 +433,28 @@ test("allow-command refuses a silent Local Forge fallback", (t) => {
   assert.equal(readFileSync(file, "utf8"), before);
 });
 
+test("headless --provider local runs Local Forge without a provider key", (t) => {
+  const demo = copyDemo("matrix-cli-provider-local-");
+  t.after(() => demo.cleanup());
+  const result = runCli(["--provider", "local", "explain the workspace", "--json"], {
+    cwd: demo.workspace,
+    home: tempHome(t),
+    env: {
+      OPENROUTER_API_KEY: "",
+      MATRIX_API_KEY: "",
+      OPENAI_API_KEY: "",
+      MATRIX_API_BASE: "",
+      OPENAI_BASE_URL: "",
+      OLLAMA_HOST: "",
+    },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.model, "local");
+  assert.equal(report.result.status, "success");
+  assert.equal(report.result.editFile, null);
+});
+
 test("an unknown explicit model fails before an auto-approved run", (t) => {
   const demo = copyDemo("matrix-cli-unknown-model-");
   t.after(() => demo.cleanup());
@@ -462,4 +490,797 @@ test("a remote model without a key fails honestly and never calls the network", 
   assert.equal(result.status, 1);
   assert.match(result.stderr, /needs an OpenRouter key/);
   assert.equal(result.stdout.trim(), "");
+});
+
+function runCliAsync(args, { cwd = PACKAGE_ROOT, home = undefined, env = {} } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [BIN, ...args], {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        NO_COLOR: "1",
+        ...(home ? { MATRIX_HOME: home } : {}),
+        ...env,
+      },
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8").on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.setEncoding("utf8").on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.once("error", reject);
+    child.once("close", (status) => resolve({ status, stdout, stderr }));
+  });
+}
+
+function shQuote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
+test("headless tasks refuse session flags rather than ignoring saved state", (t) => {
+  const home = tempHome(t);
+  for (const selection of [["--resume"], ["--session", "missing"]]) {
+    const result = runCli([...selection, "inspect the repository"], { home });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /headless tasks cannot resume a saved session/);
+    assert.doesNotMatch(result.stdout, /TASK/);
+  }
+});
+
+test("a provider-bound resume refuses a changed provider and --offline", async (t) => {
+  const home = tempHome(t);
+  const workspace = makeTempDir("matrix-resume-provider-");
+  t.after(() => rmSync(workspace, { recursive: true, force: true }));
+  await addProviderProfile(
+    {
+      id: "lab",
+      name: "Lab",
+      baseUrl: "https://lab.example/v1",
+      auth: { type: "none" },
+      models: [{ id: "vendor/manual", capabilities: { tools: "supported" } }],
+    },
+    { home },
+  );
+  const profile = loadProviderConfig({ home }).config.providers[0];
+  const identity = {
+    id: "lab",
+    modelId: "vendor/manual",
+    digest: targetDigest({ ...profile, baseUrl: "https://other.example/v1" }),
+  };
+  const saved = saveSession(
+    { id: "bound", cwd: workspace, history: [], modelId: "vendor/manual", provider: identity },
+    { home, now: Date.now() },
+  );
+  assert.equal(saved.ok, true);
+
+  const runScript = (args) => {
+    const command = [process.execPath, BIN, ...args].map(shQuote).join(" ");
+    return spawnSync("script", ["-qec", command, "/dev/null"], {
+      cwd: workspace,
+      encoding: "utf8",
+      timeout: 30_000,
+      env: { ...process.env, NO_COLOR: "1", MATRIX_HOME: home },
+    });
+  };
+
+  const result = runScript(["--resume"]);
+  if (result.error?.code === "ENOENT") {
+    const check = validateSessionProvider(identity, {
+      config: loadProviderConfig({ home }).config,
+    });
+    assert.match(check.error, /changed since this session was saved/);
+    return;
+  }
+  assert.notEqual(result.status, 0);
+  assert.match(
+    `${result.stdout ?? ""}${result.stderr ?? ""}`,
+    /changed since this session was saved/,
+  );
+
+  const offline = runScript(["--resume", "--offline"]);
+  assert.notEqual(offline.status, 0);
+  assert.match(
+    `${offline.stdout ?? ""}${offline.stderr ?? ""}`,
+    /--offline cannot resume a provider-bound session/,
+  );
+
+  const repairCommand = [
+    process.execPath,
+    BIN,
+    "--resume",
+    "--provider",
+    "lab",
+    "--model",
+    "vendor/manual",
+  ]
+    .map(shQuote)
+    .join(" ");
+  const repaired = spawnSync(
+    "bash",
+    ["-c", `( sleep 4; printf '\\003' ) | script -qec ${shQuote(repairCommand)} /dev/null`],
+    {
+      cwd: workspace,
+      encoding: "utf8",
+      timeout: 30_000,
+      env: { ...process.env, NO_COLOR: "1", MATRIX_HOME: home, TERM: "xterm-256color" },
+    },
+  );
+  assert.equal(repaired.status, 0, repaired.stderr);
+  assert.match(`${repaired.stdout ?? ""}${repaired.stderr ?? ""}`, /vendor\/manual/);
+  assert.doesNotMatch(
+    `${repaired.stdout ?? ""}${repaired.stderr ?? ""}`,
+    /changed since this session was saved/,
+  );
+  const resumed = loadSession("bound", { home, cwd: workspace });
+  assert.equal(resumed.provider.id, "lab");
+  assert.equal(resumed.provider.modelId, "vendor/manual");
+  assert.equal(resumed.provider.digest, targetDigest(profile));
+});
+
+test("a terminal provider invocation presets the exact named model", async (t) => {
+  const home = tempHome(t);
+  const workspace = makeTempDir("matrix-tty-preset-");
+  t.after(() => rmSync(workspace, { recursive: true, force: true }));
+  await addProviderProfile(
+    {
+      id: "lab",
+      name: "Lab inference",
+      baseUrl: "https://lab.example/v1",
+      auth: { type: "none" },
+      defaultModel: "vendor/manual",
+      models: [{ id: "vendor/manual", name: "Lab Manual", capabilities: { tools: "supported" } }],
+    },
+    { home },
+  );
+
+  const command = [process.execPath, BIN, "--provider", "lab"].map(shQuote).join(" ");
+  // Feed Ctrl+C after the first frame so the interactive app exits on its own.
+  const wrapped = `( sleep 4; printf '\\003' ) | script -qec ${shQuote(command)} /dev/null`;
+  const result = spawnSync("bash", ["-c", wrapped], {
+    cwd: workspace,
+    encoding: "utf8",
+    timeout: 30_000,
+    env: { ...process.env, NO_COLOR: "1", MATRIX_HOME: home, TERM: "xterm-256color" },
+  });
+  if (result.error?.code === "ENOENT") {
+    // No PTY helper on this host: assert the preset the binary would render.
+    const target = resolveProviderSelection({
+      providerId: "lab",
+      config: loadProviderConfig({ home }).config,
+    }).target;
+    assert.equal(target.modelId, "vendor/manual");
+    const preset = pickerModelFromTarget(target, { source: "preset", available: true });
+    assert.equal(preset.pickerKey, "provider:lab:vendor/manual");
+    return;
+  }
+  const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+  assert.match(output, /Lab Manual/, output.slice(-3000));
+  assert.doesNotMatch(output, /unknown model/, "the legacy resolver must not run");
+  assert.doesNotMatch(output, /not supported in the interactive terminal/);
+});
+
+test("headless --provider ollama binds the built-in endpoint and placeholder key", async (t) => {
+  const requests = [];
+  const server = createServer((req, res) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      requests.push({
+        url: req.url,
+        headers: req.headers,
+        body: JSON.parse(Buffer.concat(chunks).toString("utf8")),
+      });
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.write(
+        `data: ${JSON.stringify({ choices: [{ delta: { content: "ollama cli ok" } }] })}\n\n`,
+      );
+      res.end("data: [DONE]\n\n");
+    });
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const demo = copyDemo("matrix-cli-ollama-");
+  t.after(async () => {
+    server.closeAllConnections?.();
+    await new Promise((resolve) => server.close(resolve));
+    demo.cleanup();
+  });
+
+  const model = "llama3.2:8b";
+  const result = await runCliAsync(
+    ["--provider", "ollama", "--model", model, "Say that the provider works", "--json"],
+    {
+      cwd: demo.workspace,
+      home: tempHome(t),
+      env: {
+        OLLAMA_HOST: `http://127.0.0.1:${server.address().port}`,
+        OLLAMA_API_KEY: "",
+        OPENROUTER_API_KEY: "",
+        MATRIX_API_KEY: "",
+        MATRIX_API_BASE: "http://127.0.0.1:1/must-not-be-used",
+      },
+    },
+  );
+  const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+  assert.equal(result.status, 0, output);
+  assert.match(result.stdout, /ollama cli ok/);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, "/v1/chat/completions");
+  assert.equal(requests[0].headers.authorization, "Bearer ollama");
+  assert.equal(requests[0].body.model, model);
+});
+
+test("a terminal resume restores an arbitrary built-in model", async (t) => {
+  const home = tempHome(t);
+  const workspace = makeTempDir("matrix-tty-builtin-resume-");
+  t.after(() => rmSync(workspace, { recursive: true, force: true }));
+  const target = resolveProviderSelection({
+    providerId: "openrouter",
+    modelQuery: "vendor/unlisted",
+  }).target;
+  const identity = sessionProviderIdentity(pickerModelFromTarget(target));
+  const saved = saveSession(
+    {
+      id: "builtin-resume",
+      cwd: workspace,
+      history: [],
+      modelId: "vendor/unlisted",
+      provider: identity,
+    },
+    { home, now: Date.now() },
+  );
+  assert.equal(saved.ok, true);
+
+  const command = [process.execPath, BIN, "--resume"].map(shQuote).join(" ");
+  const wrapped = `( sleep 4; printf '\\003' ) | script -qec ${shQuote(command)} /dev/null`;
+  const result = spawnSync("bash", ["-c", wrapped], {
+    cwd: workspace,
+    encoding: "utf8",
+    timeout: 30_000,
+    env: { ...process.env, NO_COLOR: "1", MATRIX_HOME: home, TERM: "xterm-256color" },
+  });
+  if (result.error?.code === "ENOENT") {
+    assert.deepEqual(validateSessionProvider(identity), { ok: true, error: null });
+    return;
+  }
+  const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+  assert.match(output, /vendor\/unlisted/, output.slice(-3000));
+  assert.doesNotMatch(output, /Local Forge/, "the saved built-in identity must not fall back");
+});
+
+test("a headless CLI provider task reaches the exact endpoint with the exact model", async (t) => {
+  const requests = [];
+  const server = createServer((req, res) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      requests.push({
+        url: req.url,
+        headers: req.headers,
+        body: JSON.parse(Buffer.concat(chunks).toString("utf8")),
+      });
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.write(
+        `data: ${JSON.stringify({ choices: [{ delta: { content: "provider cli ok" } }] })}\n\n`,
+      );
+      res.end("data: [DONE]\n\n");
+    });
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  const home = tempHome(t);
+  const workspace = makeTempDir("matrix-cli-provider-workspace-");
+  t.after(async () => {
+    server.closeAllConnections?.();
+    await new Promise((resolve) => server.close(resolve));
+    rmSync(workspace, { recursive: true, force: true });
+  });
+  writeFileSync(
+    join(workspace, "package.json"),
+    JSON.stringify({ name: "cli-provider", version: "1.0.0", private: true }),
+  );
+  writeFileSync(join(workspace, "README.md"), "# workspace\n");
+
+  const model = "Vendor/Model-X:Free";
+  const key = "sk-cli-canary-key";
+  await addProviderProfile(
+    {
+      id: "lab",
+      name: "Lab inference",
+      baseUrl: `http://127.0.0.1:${server.address().port}/team/v1`,
+      auth: { type: "bearer", env: "LAB_API_KEY" },
+      defaultModel: model,
+      models: [{ id: model, capabilities: { tools: "unknown" } }],
+    },
+    { home },
+  );
+
+  const result = await runCliAsync(
+    ["--provider", "lab", "--model", model, "Say that the provider works"],
+    { cwd: workspace, home, env: { LAB_API_KEY: key, NO_COLOR: "1" } },
+  );
+
+  const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+  assert.equal(result.status, 0, output);
+  assert.match(result.stdout, /provider cli ok/);
+  assert.match(result.stderr, /tool support is unverified/);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, "/team/v1/chat/completions");
+  assert.equal(requests[0].headers.authorization, `Bearer ${key}`);
+  assert.equal(requests[0].body.model, model);
+  assert.equal(output.includes(key), false);
+});
+
+test("providers CLI manages profiles and never accepts a key value", (t) => {
+  const home = tempHome(t);
+  const key = "sk-provider-cli-canary";
+  const add = runCli(
+    [
+      "providers",
+      "add",
+      "--id",
+      "lab",
+      "--base-url",
+      "https://inference.example/v1",
+      "--api-key-env",
+      "LAB_API_KEY",
+      "--model",
+      "Vendor/Model-X:latest",
+      "--name",
+      "Lab",
+    ],
+    { home, env: { LAB_API_KEY: key } },
+  );
+  assert.equal(add.status, 0, add.stderr);
+  assert.equal(`${add.stdout}${add.stderr}`.includes(key), false);
+  assert.match(add.stdout, /provider "lab" added/);
+
+  const raw = readFileSync(join(home, "providers.json"), "utf8");
+  assert.equal(raw.includes(key), false);
+  assert.match(raw, /LAB_API_KEY/);
+
+  const listed = runCli(["providers", "list", "--json"], { home, env: { LAB_API_KEY: key } });
+  assert.equal(listed.status, 0, listed.stderr);
+  const report = JSON.parse(listed.stdout);
+  const lab = report.providers.find((provider) => provider.id === "lab");
+  assert.equal(lab.available, true);
+  assert.deepEqual(
+    lab.models.map((model) => model.id),
+    ["Vendor/Model-X:latest"],
+  );
+
+  const models = runCli(["providers", "models", "lab"], { home, env: { LAB_API_KEY: key } });
+  assert.equal(models.status, 0, models.stderr);
+  assert.match(models.stdout, /configured \(1\)/);
+  assert.match(models.stdout, /no snapshot yet/);
+
+  const duplicate = runCli(
+    [
+      "providers",
+      "add",
+      "--id",
+      "lab",
+      "--base-url",
+      "https://other.example/v1",
+      "--api-key-env",
+      "LAB_API_KEY",
+    ],
+    { home },
+  );
+  assert.notEqual(duplicate.status, 0);
+  assert.match(duplicate.stderr, /already exists/);
+
+  const removed = runCli(["providers", "remove", "lab"], { home });
+  assert.equal(removed.status, 0, removed.stderr);
+  const after = JSON.parse(runCli(["providers", "list", "--json"], { home }).stdout);
+  assert.equal(
+    after.providers.some((provider) => provider.id === "lab"),
+    false,
+  );
+});
+
+test("providers replace works through the CLI and rejects stale expected digests", (t) => {
+  const home = tempHome(t);
+  const add = runCli(
+    [
+      "providers",
+      "add",
+      "--id",
+      "lab",
+      "--base-url",
+      "https://old.example/v1",
+      "--auth",
+      "none",
+      "--json",
+    ],
+    { home },
+  );
+  assert.equal(add.status, 0, add.stderr);
+  const digest = JSON.parse(add.stdout).digest;
+  const profile = join(home, "replacement.json");
+  writeFileSync(
+    profile,
+    JSON.stringify({
+      id: "lab",
+      baseUrl: "https://new.example/v1",
+      auth: { type: "none" },
+      models: [{ id: "Vendor/Model" }],
+    }),
+  );
+  const replace = runCli(
+    ["providers", "replace", "lab", profile, "--expected-digest", digest, "--json"],
+    { home },
+  );
+  assert.equal(replace.status, 0, replace.stderr);
+  const show = runCli(["providers", "show", "lab", "--json"], { home });
+  assert.equal(JSON.parse(show.stdout).baseUrl, "https://new.example/v1");
+  assert.equal(JSON.parse(show.stdout).models[0].id, "Vendor/Model");
+  const stale = runCli(["providers", "replace", "lab", profile, "--expected-digest", digest], {
+    home,
+  });
+  assert.notEqual(stale.status, 0);
+  assert.match(stale.stderr, /changed since it was read/);
+});
+
+test("providers show and update inspect and edit one profile", (t) => {
+  const home = tempHome(t);
+  const key = "sk-provider-show-canary";
+  const env = { LAB_API_KEY: key };
+  const add = runCli(
+    [
+      "providers",
+      "add",
+      "--id",
+      "lab",
+      "--base-url",
+      "https://inference.example/v1",
+      "--api-key-env",
+      "LAB_API_KEY",
+      "--name",
+      "Lab",
+      "--model",
+      "vendor/a",
+    ],
+    { home, env },
+  );
+  assert.equal(add.status, 0, add.stderr);
+
+  const shown = runCli(["providers", "show", "lab"], { home, env });
+  assert.equal(shown.status, 0, shown.stderr);
+  assert.match(shown.stdout, /PROVIDER lab · Lab/);
+  assert.match(shown.stdout, /auth bearer · LAB_API_KEY/);
+  assert.match(shown.stdout, /default vendor\/a/);
+  assert.match(shown.stdout, /key present/);
+  assert.match(shown.stdout, /configured \(1\)/);
+  assert.equal(shown.stdout.includes(key), false);
+
+  const detail = JSON.parse(runCli(["providers", "show", "lab", "--json"], { home, env }).stdout);
+  assert.deepEqual(detail.auth, { type: "bearer", env: "LAB_API_KEY" });
+  assert.deepEqual(
+    detail.models.map((model) => model.id),
+    ["vendor/a"],
+  );
+  assert.equal(detail.available, true);
+  assert.equal(detail.defaultModel, "vendor/a");
+  assert.equal(detail.discovery, null);
+
+  const updated = runCli(
+    [
+      "providers",
+      "update",
+      "lab",
+      "--name",
+      "Lab Two",
+      "--model",
+      "vendor/b",
+      "--default-model",
+      "vendor/b",
+    ],
+    { home, env },
+  );
+  assert.equal(updated.status, 0, updated.stderr);
+  assert.match(updated.stdout, /provider "lab" updated · name, model, defaultModel/);
+  assert.equal(`${updated.stdout}${updated.stderr}`.includes(key), false);
+
+  const after = JSON.parse(runCli(["providers", "show", "lab", "--json"], { home, env }).stdout);
+  assert.equal(after.name, "Lab Two");
+  assert.equal(after.defaultModel, "vendor/b");
+  assert.deepEqual(
+    after.models.map((model) => model.id),
+    ["vendor/a", "vendor/b"],
+  );
+  assert.deepEqual(after.auth, { type: "bearer", env: "LAB_API_KEY" });
+
+  const removed = runCli(["providers", "update", "lab", "--remove-model", "vendor/b"], {
+    home,
+    env,
+  });
+  assert.equal(removed.status, 0, removed.stderr);
+  assert.match(removed.stdout, /updated · model, defaultModel/);
+  const cleaned = JSON.parse(runCli(["providers", "show", "lab", "--json"], { home }).stdout);
+  assert.equal(cleaned.defaultModel, null);
+  assert.deepEqual(
+    cleaned.models.map((model) => model.id),
+    ["vendor/a"],
+  );
+
+  const anonymous = runCli(["providers", "update", "lab", "--auth", "none"], { home, env });
+  assert.equal(anonymous.status, 0, anonymous.stderr);
+  const anonymousDetail = JSON.parse(
+    runCli(["providers", "show", "lab", "--json"], { home, env }).stdout,
+  );
+  assert.deepEqual(anonymousDetail.auth, { type: "none", env: null });
+  assert.equal(anonymousDetail.available, true);
+
+  const unknown = runCli(["providers", "show", "missing"], { home, env });
+  assert.notEqual(unknown.status, 0);
+  assert.match(unknown.stderr, /unknown provider "missing"/);
+  const unknownUpdate = runCli(["providers", "update", "missing", "--name", "X"], { home, env });
+  assert.notEqual(unknownUpdate.status, 0);
+  assert.match(unknownUpdate.stderr, /unknown provider/);
+  const emptyUpdate = runCli(["providers", "update", "lab"], { home, env });
+  assert.notEqual(emptyUpdate.status, 0);
+  assert.match(emptyUpdate.stderr, /at least one change/);
+  const duplicate = runCli(["providers", "update", "lab", "--model", "vendor/a"], {
+    home,
+    env,
+  });
+  assert.notEqual(duplicate.status, 0);
+  assert.match(duplicate.stderr, /already lists model/);
+});
+
+test("providers update keeps an unlisted default model across unrelated edits", async (t) => {
+  const home = tempHome(t);
+  await addProviderProfile(
+    {
+      id: "lab",
+      name: "Lab",
+      baseUrl: "https://inference.example/v1",
+      auth: { type: "none" },
+      defaultModel: "Vendor/Manual:latest",
+      models: [],
+    },
+    { home },
+  );
+
+  const renamed = runCli(["providers", "update", "lab", "--name", "Renamed", "--json"], {
+    home,
+  });
+  assert.equal(renamed.status, 0, renamed.stderr);
+  const receipt = JSON.parse(renamed.stdout);
+  assert.deepEqual(receipt.changes, ["name"]);
+  assert.equal(receipt.defaultModel, "Vendor/Manual:latest");
+
+  const shown = JSON.parse(runCli(["providers", "show", "lab", "--json"], { home }).stdout);
+  assert.equal(shown.name, "Renamed");
+  assert.equal(shown.defaultModel, "Vendor/Manual:latest");
+  assert.deepEqual(shown.models, []);
+  assert.equal(shown.discovery, null);
+});
+
+test("providers models --refresh uses the profile endpoint and keeps failure visible", async (t) => {
+  let fail = false;
+  const requests = [];
+  const server = createServer((req, res) => {
+    requests.push({ url: req.url, headers: req.headers });
+    if (fail) {
+      res.writeHead(503, { "content-type": "text/plain" });
+      res.end("unavailable");
+      return;
+    }
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(
+      JSON.stringify({
+        data: [{ id: "vendor/discovered" }, { id: "Vendor/Model-X:latest" }],
+      }),
+    );
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const home = tempHome(t);
+  t.after(async () => {
+    server.closeAllConnections?.();
+    await new Promise((resolve) => server.close(resolve));
+  });
+  const key = "sk-provider-refresh-canary";
+  const baseUrl = `http://127.0.0.1:${server.address().port}/team/v1`;
+  const add = await runCliAsync(
+    [
+      "providers",
+      "add",
+      "--id",
+      "lab",
+      "--base-url",
+      baseUrl,
+      "--api-key-env",
+      "LAB_API_KEY",
+      "--model",
+      "Vendor/Model-X:latest",
+    ],
+    { home },
+  );
+  assert.equal(add.status, 0, add.stderr);
+
+  const refreshed = await runCliAsync(["providers", "models", "lab", "--refresh"], {
+    home,
+    env: { LAB_API_KEY: key },
+  });
+  assert.equal(refreshed.status, 0, refreshed.stderr);
+  assert.match(refreshed.stdout, /refresh ok · 2 models/);
+  assert.match(refreshed.stdout, /vendor\/discovered/);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, "/team/v1/models");
+  assert.equal(requests[0].headers.authorization, `Bearer ${key}`);
+
+  let listed = JSON.parse(
+    (await runCliAsync(["providers", "list", "--json"], { home, env: { LAB_API_KEY: key } }))
+      .stdout,
+  );
+  assert.equal(listed.providers.find((provider) => provider.id === "lab").discovery.stale, false);
+
+  fail = true;
+  const failed = await runCliAsync(["providers", "models", "lab", "--refresh"], {
+    home,
+    env: { LAB_API_KEY: key },
+  });
+  assert.equal(failed.status, 1);
+  assert.match(failed.stdout, /refresh failed/);
+  assert.match(failed.stdout, /prior snapshot preserved/);
+
+  listed = JSON.parse(
+    (await runCliAsync(["providers", "list", "--json"], { home, env: { LAB_API_KEY: key } }))
+      .stdout,
+  );
+  const stale = listed.providers.find((provider) => provider.id === "lab");
+  assert.equal(stale.discovery.outcome, "error");
+  assert.equal(stale.discovery.stale, true);
+  assert.match(stale.discovery.error, /HTTP 503/);
+  assert.ok(stale.models.some((model) => model.id === "vendor/discovered"));
+
+  // A fresh process reading the cache without --refresh must still warn.
+  const cachedText = await runCliAsync(["providers", "models", "lab"], {
+    home,
+    env: { LAB_API_KEY: key },
+  });
+  assert.equal(cachedText.status, 0, cachedText.stderr);
+  assert.match(cachedText.stdout, /stale: .*HTTP 503/);
+  assert.match(cachedText.stdout, /configured \(1\)/);
+  assert.match(cachedText.stdout, /Vendor\/Model-X:latest/);
+  assert.match(cachedText.stdout, /vendor\/discovered/);
+  assert.doesNotMatch(cachedText.stdout, /refresh failed/);
+
+  const cachedJson = JSON.parse(
+    (
+      await runCliAsync(["providers", "models", "lab", "--json"], {
+        home,
+        env: { LAB_API_KEY: key },
+      })
+    ).stdout,
+  );
+  assert.equal(cachedJson.refresh, null);
+  assert.equal(cachedJson.discovery.outcome, "error");
+  assert.equal(cachedJson.discovery.stale, true);
+  assert.match(cachedJson.discovery.error, /HTTP 503/);
+  assert.deepEqual(cachedJson.configured, ["Vendor/Model-X:latest"]);
+  assert.ok(cachedJson.discovered.includes("vendor/discovered"));
+  assert.equal(requests.length, 2, "cache reads never call the provider");
+});
+
+test("providers test probes one exact model and records evidence without the key", async (t) => {
+  const home = tempHome(t);
+  const requests = [];
+  const server = createServer((req, res) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      requests.push({ url: req.url, headers: req.headers, body });
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      const events = body.tools
+        ? body.messages.some((message) => message.role === "tool")
+          ? [
+              { choices: [{ delta: { content: "observed" } }] },
+              { choices: [{ delta: {}, finish_reason: "stop" }] },
+            ]
+          : [
+              {
+                choices: [
+                  {
+                    delta: {
+                      tool_calls: [
+                        {
+                          index: 0,
+                          id: "call_cli_1",
+                          function: { name: "matrix_probe_noop", arguments: '{"note":"probe"}' },
+                        },
+                      ],
+                    },
+                    finish_reason: "tool_calls",
+                  },
+                ],
+              },
+            ]
+        : [{ choices: [{ delta: { content: "pong" } }] }];
+      for (const event of events) res.write(`data: ${JSON.stringify(event)}\n\n`);
+      res.end("data: [DONE]\n\n");
+    });
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => {
+    server.closeAllConnections?.();
+    server.close();
+  });
+  const address = server.address();
+  const key = "sk-probe-cli-canary";
+  await addProviderProfile(
+    {
+      id: "lab",
+      name: "Lab",
+      baseUrl: `http://127.0.0.1:${address.port}/v1`,
+      auth: { type: "bearer", env: "LAB_API_KEY" },
+      models: [{ id: "vendor/exact-model", capabilities: { tools: "unknown" } }],
+    },
+    { home },
+  );
+
+  const text = await runCliAsync(["providers", "test", "lab", "--model", "vendor/exact-model"], {
+    home,
+    env: { LAB_API_KEY: key },
+  });
+  assert.equal(text.status, 0, text.stderr);
+  assert.match(text.stdout, /PROVIDER PROBE lab · vendor\/exact-model/);
+  assert.match(text.stdout, /text\s+✓ pass · 4 content chars/);
+  assert.match(text.stdout, /tools\s+✓ pass/);
+  assert.match(text.stdout, /3 requests/);
+  assert.match(text.stdout, /record .*lab\.probes\.json/);
+  assert.match(text.stdout, /Synthetic fixtures only/);
+  assert.equal(requests.length, 3);
+  assert.equal(requests[0].url, "/v1/chat/completions");
+  assert.equal(requests[0].headers.authorization, `Bearer ${key}`);
+  assert.equal(requests[0].body.max_tokens, 256);
+
+  const recordPath = join(home, "provider-cache", "lab.probes.json");
+  assert.equal(existsSync(recordPath), true);
+  assert.equal(readFileSync(recordPath, "utf8").includes(key), false);
+
+  const json = await runCliAsync(
+    ["providers", "test", "lab", "--model", "vendor/exact-model", "--checks", "text", "--json"],
+    { home, env: { LAB_API_KEY: key } },
+  );
+  assert.equal(json.status, 0, json.stderr);
+  const report = JSON.parse(json.stdout);
+  assert.equal(report.ok, true);
+  assert.deepEqual(report.requestedChecks, ["text"]);
+  assert.equal(report.checks.text.status, "pass");
+  assert.equal(report.checks.tools.status, "not-evaluated");
+  assert.equal(report.requests, 1);
+  assert.equal(report.recorded, true);
+
+  await addProviderProfile(
+    {
+      id: "down",
+      name: "Down",
+      baseUrl: "http://127.0.0.1:1/v1",
+      auth: { type: "none" },
+      models: [{ id: "vendor/down-model", capabilities: { tools: "unknown" } }],
+    },
+    { home },
+  );
+  const failed = await runCliAsync(["providers", "test", "down", "--model", "vendor/down-model"], {
+    home,
+  });
+  assert.equal(failed.status, 1);
+  assert.match(failed.stdout, /text\s+✗ fail/);
+  assert.match(failed.stdout, /record /);
 });

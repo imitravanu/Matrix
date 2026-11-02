@@ -159,7 +159,7 @@ export function KeyHints({
   } else if (screen === "vision") {
     hint = "←/→ view · /export PNG · Alt+2 chat · Alt+5 scope";
   } else if (screen === "model") {
-    hint = "↑/↓ or j/k select · Enter apply · Esc cancel · 1-6 screens";
+    hint = "↑/↓ or j/k select · Enter apply · e exact model · Esc cancel · 1-6 screens";
   } else if (screen === "help") {
     hint = "↑/↓ or j/k scroll · PgUp/PgDn · Home/End · Esc close · 1-6 screens";
   } else {

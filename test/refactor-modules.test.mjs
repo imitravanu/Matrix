@@ -137,6 +137,35 @@ test("session snapshots retain exact undo data while projecting transcript cards
   assert.equal(snapshot.undoRun.entries[0].patch, "");
 });
 
+test("session snapshots keep provider identity only for provider targets", () => {
+  const digest = "a".repeat(64);
+  const base = {
+    sessionId: "session-1",
+    cwd: "/workspace",
+    project: null,
+    history: [],
+    tokenStats: {},
+    metrics: {},
+    undoRun: null,
+    elapsedMs: 0,
+  };
+  const bound = sessionSnapshot({
+    ...base,
+    model: {
+      id: "vendor/manual",
+      providerTarget: {
+        kind: "custom",
+        providerId: "lab",
+        modelId: "vendor/manual",
+        configDigest: digest,
+      },
+    },
+  });
+  assert.equal(bound.modelId, "vendor/manual");
+  assert.deepEqual(bound.provider, { id: "lab", modelId: "vendor/manual", digest });
+  assert.equal(sessionSnapshot({ ...base, model: { id: "local" } }).provider, null);
+});
+
 test("result projections preserve outcome, elapsed, usage, and retained verification fields", () => {
   const { normalized, finalMetrics, message } = projectResult(
     {
