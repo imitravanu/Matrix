@@ -148,10 +148,12 @@ the shared trusted test path: exact-plan authorization, a minimal allowlisted ch
 with a disposable home, bounded and redacted output, cancellation, trust and execution audits, and
 process-group cleanup on normal exit, timeout and cancellation. The submitted source and completion
 token are never part of argv, the displayed command, or the trust/execution audit. The agent's own
-test run still uses the normal workspace toolchain; it is evidence, not the scoring authority.
-The two verification runs receive an allowlisted environment, excluding ambient provider
-credentials regardless of their variable names. This is not a general filesystem or network
-sandbox for arbitrary code. Its evidence class is `opt-in-provider`; it is not availability,
+test run uses a disposable workspace snapshot in the Linux Bubblewrap sandbox, with separate user,
+PID and network namespaces. The evaluator refuses to run if the sandbox probe fails; it never falls
+back to a host test run. The final source must match the last approved, applied edit. Scoring itself
+is not sandboxed from other hostile host processes running as the same user: the boundary isolates
+workspace test code, not pre-existing host malware. Scoring receives an allowlisted environment,
+excluding ambient provider credentials regardless of their variable names. Its evidence class is `opt-in-provider`; it is not availability,
 quality, pricing, context-length or latency evidence, and one run is not generalized to another
 model. A fake-provider
 loopback coding run is covered deterministically by `test/provider-eval.test.mjs`; live runs remain
@@ -170,7 +172,7 @@ replacement cannot satisfy either gate. Pre-creating or replacing the old on-dis
 authoritative paths, including with a FIFO, cannot affect scoring because the generated
 test source is never read from disk. Both verification runs require a per-run
 completion receipt emitted after every assertion; a zero exit status alone fails
-verification. A VM is not a general security sandbox; the ordinary coding/test run still
-requires trusted execution. The JSON report includes `authoritativeVerification` and
+verification. A VM is not a general security sandbox; untrusted workspace tests run in the
+separate sandbox described above. The JSON report includes `authoritativeVerification` and
 `behavioralVerification` alongside the agent's own test result, and both independent
 checks must pass for task success.

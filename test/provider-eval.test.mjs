@@ -18,16 +18,28 @@ import {
   PROVIDER_EVAL_TASK_REVISION,
   formatProviderEvalText,
   parseProviderEvalArgs,
+  requireProviderEvalSandbox,
   runAuthoritativeVerification,
   runProviderEvaluation,
 } from "../eval/provider-eval.mjs";
 import { addProviderProfile } from "../lib/provider-config.mjs";
 import { PACKAGE_ROOT, makeTempDir } from "./helpers.mjs";
 
+const sandboxTest = process.platform === "linux" ? test : test.skip;
+
 const MODEL = "vendor/eval-model:latest";
 const KEY = "sk-provider-eval-canary";
 const TEST_PATH = "test/bounds.test.mjs";
 const FIXED_SOURCE = `export function keepLast(items) {\n  return items.slice(0, items.length);\n}\n`;
+
+test("provider evaluation refuses an unavailable test sandbox", async () => {
+  await assert.rejects(
+    requireProviderEvalSandbox({
+      probe: async () => ({ available: false, reason: "unavailable" }),
+    }),
+    /requires the Linux test sandbox: unavailable/,
+  );
+});
 
 function sandbox(t) {
   const root = makeTempDir("matrix-provider-eval-test-");
@@ -197,6 +209,72 @@ async function setup(home, baseUrl) {
   );
 }
 
+sandboxTest(
+  "evaluation rejects a post-approval source replacement even when it passes scoring",
+  async (t) => {
+    const home = sandbox(t);
+    const server = await startServer((req, res, record) => {
+      const followUp = JSON.parse(record.body).messages.some((message) => message.role === "tool");
+      sse(res, followUp ? contentEvents("Done.") : proposeEditEvents());
+    });
+    t.after(() => server.close());
+    await setup(home, server.baseUrl);
+    withKey(t);
+    let appliedPath;
+    const report = await runProviderEvaluation({
+      home,
+      providerId: "lab",
+      modelId: MODEL,
+      env: process.env,
+      onEvent(event) {
+        if (event.type === "applied") appliedPath = event.absPath;
+        if (event.type === "result" && appliedPath) {
+          writeFileSync(appliedPath, `${FIXED_SOURCE}\n// replaced after approval\n`);
+        }
+      },
+    });
+    assert.equal(report.authoritativeVerification.ok, true);
+    assert.equal(report.behavioralVerification.ok, true);
+    assert.equal(report.checks.edit.status, "fail");
+    assert.equal(report.taskSuccess, false);
+    assert.equal(report.ok, false);
+  },
+);
+
+sandboxTest(
+  "provider workspace tests cannot reach the evaluator or write to host tmp",
+  async (t) => {
+    const home = sandbox(t);
+    const marker = `${home.replaceAll("/", "_")}-sandbox-marker`;
+    const hostMarker = join("/tmp", marker);
+    t.after(() => rmSync(hostMarker, { force: true }));
+    const events = proposeEditEvents();
+    const toolCall = events[0].choices[0].delta.tool_calls[0];
+    const args = JSON.parse(toolCall.function.arguments);
+    args.replacement = [
+      `  try { process.kill(${process.pid}, 0); throw new Error("host process visible"); }`,
+      '  catch (error) { if (error.code !== "ESRCH") throw error; }',
+      `  process.getBuiltinModule("node:fs").writeFileSync(${JSON.stringify(hostMarker)}, "sandbox");`,
+      "  return items.slice(0, items.length);",
+      "",
+    ].join("\n");
+    toolCall.function.arguments = JSON.stringify(args);
+    const server = await startServer((req, res, record) => {
+      const followUp = JSON.parse(record.body).messages.some((message) => message.role === "tool");
+      sse(res, followUp ? contentEvents("Done.") : events);
+    });
+    t.after(() => server.close());
+    await setup(home, server.baseUrl);
+    withKey(t);
+    const report = await runProviderEvaluation({ home, providerId: "lab", modelId: MODEL });
+    assert.equal(report.verification.ok, true);
+    assert.equal(existsSync(hostMarker), false);
+    // The authoritative VM deliberately denies process, so this hostile source
+    // must not count as a successful candidate even though workspace tests ran.
+    assert.equal(report.taskSuccess, false);
+  },
+);
+
 function withKey(t, value = KEY) {
   const previous = process.env.LAB_API_KEY;
   process.env.LAB_API_KEY = value;
@@ -206,7 +284,7 @@ function withKey(t, value = KEY) {
   });
 }
 
-test("an explicit provider/model edit run applies the patch and verifies it", async (t) => {
+sandboxTest("an explicit provider/model edit run applies the patch and verifies it", async (t) => {
   const home = sandbox(t);
   const server = await startServer((req, res, record) => {
     const body = JSON.parse(record.body);
@@ -279,7 +357,7 @@ test("an explicit provider/model edit run applies the patch and verifies it", as
   assert.match(formatProviderEvalText(report), /evidence: one explicit run/i);
 });
 
-test("a test-file edit is denied and cannot produce task success", async (t) => {
+sandboxTest("a test-file edit is denied and cannot produce task success", async (t) => {
   const home = sandbox(t);
   const server = await startServer((req, res, record) => {
     const body = JSON.parse(record.body);
@@ -313,7 +391,7 @@ test("a test-file edit is denied and cannot produce task success", async (t) => 
   assert.match(formatProviderEvalText(report), /scope fail/);
 });
 
-test("a package.json test-runner substitution cannot produce task success", async (t) => {
+sandboxTest("a package.json test-runner substitution cannot produce task success", async (t) => {
   const home = sandbox(t);
   const server = await startServer((req, res, record) => {
     const body = JSON.parse(record.body);
@@ -472,7 +550,7 @@ test("authoritative verification terminates a non-returning submission on timeou
   }
 });
 
-test("execution uses the explicit evaluation credential, not process.env", async (t) => {
+sandboxTest("execution uses the explicit evaluation credential, not process.env", async (t) => {
   const home = sandbox(t);
   const server = await startServer((req, res, record) => {
     if (req.headers.authorization !== `Bearer ${KEY}`) {
@@ -510,7 +588,7 @@ test("execution uses the explicit evaluation credential, not process.env", async
   }
 });
 
-test("prose without an applied edit is not task success", async (t) => {
+sandboxTest("prose without an applied edit is not task success", async (t) => {
   const home = sandbox(t);
   const server = await startServer((req, res) =>
     sse(res, contentEvents("Done! The bug is fixed.")),
@@ -536,7 +614,7 @@ test("prose without an applied edit is not task success", async (t) => {
   assert.match(formatProviderEvalText(report), /taskSuccess no/);
 });
 
-test("a provider HTTP failure is reported honestly and cleans up", async (t) => {
+sandboxTest("a provider HTTP failure is reported honestly and cleans up", async (t) => {
   const home = sandbox(t);
   const server = await startServer((req, res) => sse(res, [], { status: 503 }));
   t.after(() => server.close());
@@ -585,7 +663,7 @@ function runProviderEvalCli(args, { home, env = {} } = {}) {
   });
 }
 
-test("the provider eval CLI runs one explicit target and writes its report", async (t) => {
+sandboxTest("the provider eval CLI runs one explicit target and writes its report", async (t) => {
   const home = sandbox(t);
   const server = await startServer((req, res, record) => {
     const body = JSON.parse(record.body);
@@ -643,7 +721,7 @@ test("provider eval parsing requires an explicit provider and exact model", () =
   assert.throws(() => parseProviderEvalArgs(["--provider", "--json"]), /requires a value/);
 });
 
-test("equivalent correct edits pass without matching reference bytes", async (t) => {
+sandboxTest("equivalent correct edits pass without matching reference bytes", async (t) => {
   const home = sandbox(t);
   const server = await startServer((req, res, record) => {
     const body = JSON.parse(record.body);
@@ -688,42 +766,45 @@ test("both verification runs deny credential and filesystem access to submitted 
   assert.equal(existsSync(marker), false, "submitted code reached the filesystem or credential");
 });
 
-test("evaluation cancellation prevents requests and interrupts an active request", async (t) => {
-  const home = sandbox(t);
-  const ac = new AbortController();
-  let seen;
-  const requestSeen = new Promise((resolve) => {
-    seen = resolve;
-  });
-  const server = await startServer((_req, _res) => {
-    seen();
-  });
-  t.after(() => server.close());
-  await setup(home, server.baseUrl);
-  withKey(t);
-  ac.abort();
-  await assert.rejects(
-    runProviderEvaluation({ home, providerId: "lab", modelId: MODEL, signal: ac.signal }),
-    /aborted/,
-  );
-  assert.equal(server.requests.length, 0);
-  const active = new AbortController();
-  const pending = runProviderEvaluation({
-    home,
-    providerId: "lab",
-    modelId: MODEL,
-    signal: active.signal,
-    timeoutMs: 5000,
-  });
-  await requestSeen;
-  active.abort();
-  const result = await pending;
-  assert.equal(result.taskSuccess, false);
-  assert.equal(result.applied, 0);
-  assert.equal(server.requests.length, 1);
-});
+sandboxTest(
+  "evaluation cancellation prevents requests and interrupts an active request",
+  async (t) => {
+    const home = sandbox(t);
+    const ac = new AbortController();
+    let seen;
+    const requestSeen = new Promise((resolve) => {
+      seen = resolve;
+    });
+    const server = await startServer((_req, _res) => {
+      seen();
+    });
+    t.after(() => server.close());
+    await setup(home, server.baseUrl);
+    withKey(t);
+    ac.abort();
+    await assert.rejects(
+      runProviderEvaluation({ home, providerId: "lab", modelId: MODEL, signal: ac.signal }),
+      /aborted/,
+    );
+    assert.equal(server.requests.length, 0);
+    const active = new AbortController();
+    const pending = runProviderEvaluation({
+      home,
+      providerId: "lab",
+      modelId: MODEL,
+      signal: active.signal,
+      timeoutMs: 5000,
+    });
+    await requestSeen;
+    active.abort();
+    const result = await pending;
+    assert.equal(result.taskSuccess, false);
+    assert.equal(result.applied, 0);
+    assert.equal(server.requests.length, 1);
+  },
+);
 
-test("early exit and forged TAP cannot satisfy behavioral scoring", async (t) => {
+sandboxTest("early exit and forged TAP cannot satisfy behavioral scoring", async (t) => {
   for (const replacement of [
     "  process.exit(0);\n",
     "  globalThis.constructor.constructor('return process')().exit(0);\n",
@@ -857,7 +938,7 @@ export function keepLast(items) { return []; }`,
   }
 });
 
-test("assertion patching and toJSON substitution cannot produce task success", async (t) => {
+sandboxTest("assertion patching and toJSON substitution cannot produce task success", async (t) => {
   const home = sandbox(t);
   const server = await startServer((req, res, record) => {
     const body = JSON.parse(record.body);
@@ -885,7 +966,7 @@ test("assertion patching and toJSON substitution cannot produce task success", a
   assert.equal(report.ok, false);
 });
 
-test("replacing the VM candidate binding cannot produce task success", async (t) => {
+sandboxTest("replacing the VM candidate binding cannot produce task success", async (t) => {
   const home = sandbox(t);
   const server = await startServer((req, res, record) => {
     const body = JSON.parse(record.body);

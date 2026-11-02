@@ -21,6 +21,8 @@ import { basename, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { createRunController } from "../lib/controller.mjs";
+import { createLinuxBwrapBackend } from "../lib/linux-bwrap.mjs";
+import { cleanupWorkspaceSnapshot, createWorkspaceSnapshot } from "../lib/linux-snapshot.mjs";
 import { runTests } from "../lib/process.mjs";
 import { detectProject } from "../lib/project.mjs";
 import { loadProviderConfig } from "../lib/provider-config.mjs";
@@ -421,6 +423,13 @@ function withWatchdog(pending, controller, timeoutMs) {
   ]).finally(() => clearTimeout(timer));
 }
 
+export async function requireProviderEvalSandbox(sandbox) {
+  const status = await sandbox.probe();
+  if (!status.available) {
+    throw new Error(`provider evaluation requires the Linux test sandbox: ${status.reason}`);
+  }
+}
+
 /**
  * Run one explicit provider/model through the real controller on a temporary
  * fixture. Preflight failures (unknown provider, missing key, Local Forge)
@@ -463,6 +472,9 @@ export async function runProviderEvaluation({
   }
   const binding = bindProviderTarget(target, env);
   if (!binding.ok) throw new Error(binding.error);
+  const sandbox = createLinuxBwrapBackend();
+  await requireProviderEvalSandbox(sandbox);
+  if (signal?.aborted) throw new Error("provider evaluation aborted");
   const secret = binding.credential;
   const endpoint = binding.endpoint;
 
@@ -478,12 +490,14 @@ export async function runProviderEvaluation({
   let error = null;
   // A holder keeps the post-run read visible to the report below without
   // tripping no-useless-assignment on a finally-block assignment.
-  const finalState = { source: null, testSource: null, packageSource: null };
+  const finalState = { source: null, sourceBytes: null, testSource: null, packageSource: null };
   const deniedPaths = new Set();
   let authoritative;
   let behavioral;
   let abortRun = null;
   const events = [];
+  let pendingApprovedSource = null;
+  let appliedApprovedSource = null;
   const startedAt = new Date().toISOString();
   try {
     writeWorkspace(workspace);
@@ -493,20 +507,29 @@ export async function runProviderEvaluation({
       allowTests: true,
       onEvent: (event) => {
         events.push(event);
-        if (onEvent) onEvent(event);
         if (event.type === "approval:request") {
           // The workspace is disposable, but the task only authorizes the one
           // source edit. Deny anything else so a model cannot rewrite the test
           // runner, fixture, or an unrelated path. A denial is recorded and
           // fails the scope check even when the final bytes stay intact.
           const requestedPath = normalizeWorkspacePath(event.proposal?.file);
+          pendingApprovedSource = null;
           if (requestedPath === ALLOWED_EDIT_PATH) {
+            if (typeof event.proposal?.updatedText === "string") {
+              pendingApprovedSource = event.proposal.updatedText;
+            }
             queueMicrotask(() => controller?.approve(signal?.aborted ? "n" : "y"));
           } else {
             deniedPaths.add(requestedPath ?? "<unknown>");
             queueMicrotask(() => controller?.approve("n"));
           }
         }
+        if (event.type === "applied") {
+          appliedApprovedSource =
+            normalizeWorkspacePath(event.file) === ALLOWED_EDIT_PATH ? pendingApprovedSource : null;
+          pendingApprovedSource = null;
+        }
+        if (onEvent) onEvent(event);
       },
     });
     abortRun = () => controller?.abort();
@@ -526,6 +549,37 @@ export async function runProviderEvaluation({
           TMPDIR: controllerHome,
           NO_COLOR: "1",
         },
+        testProcessRunner: async (options) => {
+          // The fixed evaluation task only runs its own detected test plan.
+          // Copy it before starting any workspace code; the namespace has no
+          // host process visibility or network and all writes are disposable.
+          const snapshot = createWorkspaceSnapshot(workspace, { signal: options.signal });
+          let run;
+          let cleanup;
+          try {
+            run = await sandbox.execute(
+              {
+                workspace: snapshot.sourceRoot,
+                cwd: snapshot.sourceRoot,
+                executable: options.file,
+                argv: options.args,
+                command: options.display,
+              },
+              snapshot,
+              {
+                timeoutMs: options.timeoutMs,
+                signal: options.signal,
+                onLine: options.onLine,
+              },
+            );
+          } finally {
+            cleanup = cleanupWorkspaceSnapshot(snapshot);
+          }
+          if (!cleanup.ok || run.unavailable) {
+            throw new Error("isolated provider test execution or cleanup failed");
+          }
+          return run;
+        },
         autoApprove: false,
       }),
       controller,
@@ -535,7 +589,12 @@ export async function runProviderEvaluation({
     error = caught;
   } finally {
     if (abortRun) signal?.removeEventListener("abort", abortRun);
-    finalState.source = readWorkspaceFile(workspace, ALLOWED_EDIT_PATH);
+    try {
+      finalState.sourceBytes = readFileSync(join(workspace, ALLOWED_EDIT_PATH));
+      finalState.source = finalState.sourceBytes.toString("utf8");
+    } catch {
+      finalState.sourceBytes = null;
+    }
     finalState.testSource = readWorkspaceFile(workspace, TEST_PATH);
     finalState.packageSource = readWorkspaceFile(workspace, PACKAGE_PATH);
     authoritative = await runAuthoritativeVerification(root, finalState.source, { signal });
@@ -590,7 +649,15 @@ export async function runProviderEvaluation({
         : "fail";
   const checks = {
     target: { status: "pass" },
-    edit: { status: appliedPaths.includes(ALLOWED_EDIT_PATH) && authoritativeOk ? "pass" : "fail" },
+    edit: {
+      status:
+        appliedPaths.includes(ALLOWED_EDIT_PATH) &&
+        appliedApprovedSource !== null &&
+        finalState.sourceBytes?.equals(Buffer.from(appliedApprovedSource, "utf8")) &&
+        authoritativeOk
+          ? "pass"
+          : "fail",
+    },
     test: { status: testIntact ? "pass" : "fail" },
     package: { status: packageIntact ? "pass" : "fail" },
     scope: { status: scopeIntact ? "pass" : "fail" },

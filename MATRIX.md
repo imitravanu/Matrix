@@ -490,6 +490,11 @@ The lint toolchain requires Node 22.13+; local gates run on current Node 22 and 
 
 ## Agent evaluation
 
+The opt-in provider evaluator executes its workspace tests in a Linux Bubblewrap snapshot and
+requires the sandbox probe to succeed before starting. Test trust and execution audits still cover
+the detected plan. The sandbox isolates workspace processes from host scoring; unrelated hostile
+same-user host processes remain outside that boundary.
+
 `npm run eval` runs a separate, serial, network-free evaluation of real controller/agent behavior.
 The default profile has nine Local Forge and seven mocked-remote policy cases covering fix, limited
 rename, create, deny, abort, exact undo/refusal, noisy verification, large-repository budgets,

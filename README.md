@@ -381,7 +381,10 @@ provider/model/config digest, task revision/digest, per-check status, outcome an
 `eval/reports/provider.json`. The preflighted credential and endpoint are the ones used by
 execution, and the fixture test file must remain byte-identical with no applied edits; a weakened
 test fails the run even if it passes. It is never part of the default eval or its baseline, sends
-no repository contents, disables shell commands, and claims nothing beyond that one run. No live
+no repository contents, requires the Linux Bubblewrap sandbox for workspace tests and refuses to
+run when it is unavailable. The sandbox isolates workspace test processes; it does not protect
+scoring from other hostile processes already running under the same host user. It
+disables shell commands, and claims nothing beyond that one run. No live
 provider quality, price, availability, or latency claim is made. `npm audit` remains a separate
 network-dependent check. The test suite uses temporary workspaces and a temporary
 `MATRIX_HOME`; it never intentionally patches the checked-in demo. Tests cover the real Local Forge apply/deny/undo path, resumed-session
