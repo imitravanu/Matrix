@@ -1,8 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -357,7 +365,70 @@ test("authoritative verification ignores a replaced workspace runner", async (t)
   assert.equal(result.failed, 0);
 });
 
-test("authoritative model code cannot read parent credentials or arbitrary environment", async (t) => {
+test("authoritative verification ignores pre-created fixture paths and FIFOs", async (t) => {
+  const root = makeTempDir("matrix-provider-eval-fifo-");
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const oldDirectory = join(root, "authoritative");
+  const shimPath = join(oldDirectory, "src", "bounds.js");
+  const submittedPath = join(oldDirectory, "src", "submitted.mjs");
+  mkdirSync(join(oldDirectory, "src"), { recursive: true });
+  mkdirSync(join(oldDirectory, "test"), { recursive: true });
+  let fifo = false;
+  try {
+    execFileSync("mkfifo", [shimPath], { stdio: "ignore" });
+    fifo = statSync(shimPath).isFIFO();
+  } catch {
+    writeFileSync(shimPath, FIXED_SOURCE);
+  }
+  writeFileSync(submittedPath, FIXED_SOURCE);
+  writeFileSync(
+    join(oldDirectory, TEST_PATH),
+    'import test from "node:test";\ntest("forged", () => {});\n',
+  );
+
+  const result = await runAuthoritativeVerification(
+    root,
+    "export function keepLast(items) { return []; }\n",
+    { timeoutMs: 5000 },
+  );
+  assert.equal(result.ok, false, "a wrong source must still fail");
+  assert.equal(result.status, "fail");
+  assert.equal(result.passed, 0);
+  assert.equal(result.failed, 1);
+  if (fifo) assert.equal(statSync(shimPath).isFIFO(), true, "the fixture FIFO was consumed");
+});
+
+test("authoritative source and completion token stay out of argv and audits", async (t) => {
+  const root = makeTempDir("matrix-provider-eval-audit-");
+  const home = join(root, "home");
+  mkdirSync(home, { recursive: true, mode: 0o700 });
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const marker = "SOURCE_MARKER_7f3c9a";
+  const result = await runAuthoritativeVerification(
+    root,
+    `export function keepLast(items) { return items.slice(); } // ${marker}\n`,
+    { home, timeoutMs: 5000 },
+  );
+  assert.equal(result.ok, true);
+  const files = [];
+  const walk = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else files.push(path);
+    }
+  };
+  walk(home);
+  const auditText = files.map((file) => readFileSync(file, "utf8")).join("\n");
+  assert.equal(auditText.includes(marker), false, "submitted source leaked into the audit");
+  assert.equal(
+    auditText.includes("matrix-behavior-complete-"),
+    false,
+    "completion token leaked into the audit",
+  );
+});
+
+test("authoritative verification denies submitted code Node APIs and parent environment", async (t) => {
   const root = makeTempDir("matrix-provider-eval-env-");
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const names = [
@@ -378,35 +449,26 @@ test("authoritative model code cannot read parent credentials or arbitrary envir
   const marker = join(root, "child-env.json");
   const source = `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(marker)}, JSON.stringify(${JSON.stringify(names)}.map(name => process.env[name] ?? null)));\n${FIXED_SOURCE}`;
   const result = await runAuthoritativeVerification(root, source);
-  assert.equal(result.ok, true, "the original test must still run and pass");
+  assert.equal(result.ok, false, "submitted code must not import Node APIs");
+  assert.equal(result.status, "fail");
   assert.equal(result.auditStatus, "complete");
-  assert.deepEqual(
-    JSON.parse(readFileSync(marker, "utf8")),
-    names.map(() => null),
-  );
+  assert.equal(existsSync(marker), false, "submitted code wrote through a host Node API");
 });
 
-test("authoritative verification stops owned descendants on completion, timeout and cancellation", async (t) => {
-  if (process.platform === "win32") return t.skip("POSIX process groups are required");
+test("authoritative verification terminates a non-returning submission on timeout and cancellation", async (t) => {
   const root = makeTempDir("matrix-provider-eval-process-");
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  for (const mode of ["complete", "timeout", "cancel"]) {
-    const marker = join(root, `${mode}.marker`);
-    const started = join(root, `${mode}.started`);
-    const childCode = `setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'escaped'), 2200)`;
-    const source = `import { spawn } from 'node:child_process';\nimport { writeFileSync } from 'node:fs';\nconst child = spawn(process.execPath, ['-e', ${JSON.stringify(childCode)}], { stdio: 'ignore' }); child.unref(); writeFileSync(${JSON.stringify(started)}, String(child.pid));\n${mode === "complete" ? "" : "await new Promise(() => { setInterval(() => {}, 1000); });\n"}${FIXED_SOURCE}`;
+  const source = "export function keepLast(items) { while (true) {} }";
+  for (const mode of ["timeout", "cancel"]) {
     const controller = new AbortController();
-    const timer = mode === "cancel" ? setTimeout(() => controller.abort(), 1000) : null;
+    const timer = mode === "cancel" ? setTimeout(() => controller.abort(), 150) : null;
     const result = await runAuthoritativeVerification(join(root, mode), source, {
       signal: controller.signal,
-      timeoutMs: mode === "timeout" ? 1500 : 5000,
+      timeoutMs: mode === "timeout" ? 200 : 10000,
     });
     if (timer) clearTimeout(timer);
-    if (mode === "complete") assert.equal(result.ok, true);
-    else assert.equal(result.status, mode === "timeout" ? "timed-out" : "aborted");
-    assert.equal(existsSync(started), true, `${mode} did not start the child`);
-    await new Promise((resolve) => setTimeout(resolve, 2400));
-    assert.equal(existsSync(marker), false, `${mode} left a child running`);
+    assert.equal(result.status, mode === "timeout" ? "timed-out" : "aborted");
+    assert.equal(result.ok, false);
   }
 });
 
@@ -603,39 +665,27 @@ test("equivalent correct edits pass without matching reference bytes", async (t)
   assert.equal(result.taskSuccess, true);
 });
 
-test("both evaluation test runs exclude credentials with non-obvious names", async (t) => {
-  const home = sandbox(t);
-  const marker = join(home, "observed");
+test("both verification runs deny credential and filesystem access to submitted code", async (t) => {
+  const root = makeTempDir("matrix-provider-eval-credentials-");
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const marker = join(root, "observed");
   const previous = process.env.MATRIX_REVIEW_VALUE;
   process.env.MATRIX_REVIEW_VALUE = "fake-eval-credential";
   t.after(() => {
     if (previous === undefined) delete process.env.MATRIX_REVIEW_VALUE;
     else process.env.MATRIX_REVIEW_VALUE = previous;
   });
-  const server = await startServer((req, res, record) => {
-    const body = JSON.parse(record.body);
-    const events = proposeEditEvents();
-    const fn = events[0].choices[0].delta.tool_calls[0].function;
-    const args = JSON.parse(fn.arguments);
-    args.replacement = `  process.getBuiltinModule('fs').appendFileSync(${JSON.stringify(marker)}, String(process.env.MATRIX_REVIEW_VALUE ?? 'absent') + '\\n'); return items.slice();\n`;
-    fn.arguments = JSON.stringify(args);
-    sse(
-      res,
-      body.messages.some((message) => message.role === "tool") ? contentEvents("Done") : events,
-    );
-  });
-  t.after(() => server.close());
-  await addProviderProfile(
-    {
-      id: "lab",
-      baseUrl: server.baseUrl,
-      auth: { type: "bearer", env: "MATRIX_REVIEW_VALUE" },
-      models: [{ id: MODEL }],
-    },
-    { home },
-  );
-  await runProviderEvaluation({ home, providerId: "lab", modelId: MODEL });
-  assert.deepEqual(readFileSync(marker, "utf8").trim().split("\n"), Array(8).fill("absent"));
+  const source = `import { appendFileSync } from "node:fs";\nappendFileSync(${JSON.stringify(marker)}, String(process.env.MATRIX_REVIEW_VALUE ?? "absent"));\nexport function keepLast(items) { return items.slice(); }\n`;
+  for (const behavioral of [false, true]) {
+    const result = await runAuthoritativeVerification(root, source, {
+      behavioral,
+      timeoutMs: 5000,
+    });
+    const mode = behavioral ? "behavioral" : "authoritative";
+    assert.equal(result.ok, false, `${mode} executed submitted Node APIs`);
+    assert.equal(result.status, "fail");
+  }
+  assert.equal(existsSync(marker), false, "submitted code reached the filesystem or credential");
 });
 
 test("evaluation cancellation prevents requests and interrupts an active request", async (t) => {
@@ -734,4 +784,143 @@ test("behavioral gate rejects context escapes and bounds hostile result serializ
     "export function keepLast(items) { process.exit(0); }",
   );
   assert.equal(early.ok, false);
+});
+
+test("submitted code cannot control authoritative assertions or result serialization", async (t) => {
+  const root = makeTempDir("matrix-provider-eval-scoring-");
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const sources = [
+    'import assert from "node:assert/strict";\nassert.deepEqual = () => {};\nexport function keepLast(items) { return []; }',
+    'process.getBuiltinModule("node:assert/strict").deepEqual = () => {};\nexport function keepLast(items) { return []; }',
+    "globalThis.__last = null;\nArray.prototype.toJSON = function () { return globalThis.__last; };\nexport function keepLast(items) { globalThis.__last = items; return []; }",
+    'if (typeof process !== "undefined") { process.getBuiltinModule("node:assert/strict").deepEqual = () => {}; return []; }\nglobalThis.__last = items;\nArray.prototype.toJSON = function () { return globalThis.__last; };\nreturn [];',
+  ];
+  for (const source of sources) {
+    for (const behavioral of [false, true]) {
+      const result = await runAuthoritativeVerification(root, source, {
+        behavioral,
+        timeoutMs: 5000,
+      });
+      const mode = behavioral ? "behavioral" : "authoritative";
+      assert.equal(result.ok, false, `${mode} accepted: ${source}`);
+      assert.equal(result.status, "fail", `${mode} accepted: ${source}`);
+    }
+  }
+  for (const behavioral of [false, true]) {
+    const valid = await runAuthoritativeVerification(root, FIXED_SOURCE, { behavioral });
+    assert.equal(
+      valid.ok,
+      true,
+      `valid source rejected in ${behavioral ? "behavioral" : "authoritative"} mode`,
+    );
+  }
+});
+
+test("submitted code cannot replace the VM invocation binding", async (t) => {
+  const root = makeTempDir("matrix-provider-eval-binding-");
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const sources = [
+    `Object.defineProperty(globalThis, "candidate", {
+  configurable: true,
+  set() {},
+  get() { return (items) => items; },
+});
+export function keepLast(items) { return []; }`,
+    `Object.defineProperty(globalThis, "candidate", {
+  configurable: true,
+  set() {},
+  get() { return (items) => items; },
+});
+Object.defineProperty(globalThis, "__matrix_invoke", {
+  configurable: true,
+  set() {},
+  get() { return () => "[]"; },
+});
+export function keepLast(items) { return []; }`,
+    `Object.freeze(globalThis);
+export function keepLast(items) { return []; }`,
+  ];
+  for (const source of sources) {
+    for (const behavioral of [false, true]) {
+      const result = await runAuthoritativeVerification(root, source, {
+        behavioral,
+        timeoutMs: 5000,
+      });
+      const mode = behavioral ? "behavioral" : "authoritative";
+      assert.equal(result.ok, false, `${mode} accepted: ${source}`);
+      assert.equal(result.status, "fail", `${mode} accepted: ${source}`);
+    }
+  }
+  for (const behavioral of [false, true]) {
+    const valid = await runAuthoritativeVerification(root, FIXED_SOURCE, { behavioral });
+    assert.equal(valid.ok, true, "a valid source must still pass both modes");
+  }
+});
+
+test("assertion patching and toJSON substitution cannot produce task success", async (t) => {
+  const home = sandbox(t);
+  const server = await startServer((req, res, record) => {
+    const body = JSON.parse(record.body);
+    const events = proposeEditEvents();
+    const fn = events[0].choices[0].delta.tool_calls[0].function;
+    const args = JSON.parse(fn.arguments);
+    args.replacement =
+      '  if (typeof process !== "undefined") {\n    process.getBuiltinModule("node:assert/strict").deepEqual = () => {};\n    return [];\n  }\n  globalThis.__last = items;\n  Array.prototype.toJSON = function () { return globalThis.__last; };\n  return [];\n';
+    fn.arguments = JSON.stringify(args);
+    sse(
+      res,
+      body.messages.some((message) => message.role === "tool") ? contentEvents("Done") : events,
+    );
+  });
+  t.after(() => server.close());
+  await setup(home, server.baseUrl);
+  withKey(t);
+  const report = await runProviderEvaluation({ home, providerId: "lab", modelId: MODEL });
+  assert.equal(report.applied, 1);
+  assert.equal(report.checks.scope.status, "pass");
+  assert.equal(report.authoritativeVerification.ok, false);
+  assert.equal(report.behavioralVerification.ok, false);
+  assert.equal(report.checks.verification.status, "fail");
+  assert.equal(report.taskSuccess, false);
+  assert.equal(report.ok, false);
+});
+
+test("replacing the VM candidate binding cannot produce task success", async (t) => {
+  const home = sandbox(t);
+  const server = await startServer((req, res, record) => {
+    const body = JSON.parse(record.body);
+    const events = proposeEditEvents();
+    const fn = events[0].choices[0].delta.tool_calls[0].function;
+    const args = JSON.parse(fn.arguments);
+    args.start_line = 1;
+    args.end_line = 4;
+    args.replacement = `Object.defineProperty(globalThis, "candidate", {
+  configurable: true,
+  set() {},
+  get() { return (items) => items; },
+});
+export function keepLast(items) {
+  if (typeof process !== "undefined") {
+    process.getBuiltinModule("node:assert/strict").deepEqual = () => {};
+  }
+  return [];
+}
+`;
+    fn.arguments = JSON.stringify(args);
+    sse(
+      res,
+      body.messages.some((message) => message.role === "tool") ? contentEvents("Done") : events,
+    );
+  });
+  t.after(() => server.close());
+  await setup(home, server.baseUrl);
+  withKey(t);
+  const report = await runProviderEvaluation({ home, providerId: "lab", modelId: MODEL });
+  assert.equal(report.applied, 1);
+  assert.equal(report.checks.scope.status, "pass");
+  assert.equal(report.authoritativeVerification.ok, false);
+  assert.equal(report.behavioralVerification.ok, false);
+  assert.equal(report.checks.verification.status, "fail");
+  assert.equal(report.taskSuccess, false);
+  assert.equal(report.ok, false);
 });

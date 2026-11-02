@@ -90,6 +90,22 @@ test("runProcess retains the tail of noisy output and caps long lines", async ()
   assert.ok(lines[0].length <= 512 * 1024 + 1);
 });
 
+test("runProcess writes stdin input without exposing it in the command", async () => {
+  const result = await runProcess({
+    file: process.execPath,
+    args: [
+      "-e",
+      "let input = ''; process.stdin.on('data', (chunk) => (input += chunk)); process.stdin.on('end', () => console.log(input));",
+    ],
+    input: "private-stdin-payload",
+    display: "stdin input check",
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.stdout, "private-stdin-payload\n");
+  assert.equal(result.command, "stdin input check");
+  assert.equal(result.command.includes("private-stdin-payload"), false);
+});
+
 test("runProcess reports spawn errors without throwing", async () => {
   const result = await runProcess({ file: "/definitely/not/a/binary", args: [] });
   assert.equal(result.ok, false);

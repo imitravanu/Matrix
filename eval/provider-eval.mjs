@@ -155,55 +155,136 @@ function normalizeWorkspacePath(value) {
   return normalized;
 }
 
-// Run the original fixture test, with the original runner files, against the
-// final source bytes. The workspace's package.json and test file are evidence,
-// never the authority: a model cannot select or replace the verification command.
-// The pure-function scoring gate supplies no Node APIs to submitted code.
-// Assertions run in the outer harness realm, after every invocation returns.
-const BEHAVIORAL_TEST_SOURCE = `import test from "node:test";
-import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { createContext, SourceTextModule, runInContext } from "node:vm";
-test("completed behavioral assertions", async () => {
-  const context = createContext(Object.create(null), { codeGeneration: { strings: false, wasm: false } });
-  runInContext('const encodeResult = JSON.stringify; const isArrayResult = Array.isArray; delete globalThis.console;', context);
-  const module = new SourceTextModule(readFileSync(new URL("../src/bounds.js", import.meta.url), "utf8"), { context,
-    importModuleDynamically: () => { throw runInContext('new Error("imports unavailable")', context); }
-  });
-  await module.link(() => { throw new Error("imports are unavailable for this pure-function task"); });
-  await module.evaluate({ timeout: 1000 });
-  context.candidate = module.namespace.keepLast;
-  for (const literal of ['[]', '[1]', '[1,2]', '["a","b","c"]']) {
-    const encoded = runInContext('(() => { const value = candidate(' + literal + '); if (!isArrayResult(value)) throw new Error("array required"); return encodeResult(value); })()', context, { timeout: 1000 });
-    assert.equal(typeof encoded, "string");
-    assert.deepEqual(JSON.parse(encoded), JSON.parse(literal));
-  }
-  console.log("BEHAVIORAL_COMPLETION_TOKEN");
-});
-`;
+function jsonLiteral(value) {
+  return JSON.stringify(value)
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+}
+
+// Scoring tests are generated in the evaluator process and delivered over
+// stdin. The authoritative source therefore lives at no predictable path that
+// the workspace process can pre-create, replace, or turn into a FIFO. The
+// submitted bytes still evaluate only inside a null-prototype VM context with
+// no imports or Node APIs; assertions, the completion token and result
+// comparison remain in the host realm.
+function authoritativeTestSource(source, completionToken, behavioral) {
+  const invokeBinding = `__matrix_invoke_${randomBytes(16).toString("hex")}`;
+  const submittedLiteral = jsonLiteral(source ?? BUGGY_SOURCE);
+  return (
+    [
+      'import test from "node:test";',
+      'import assert from "node:assert/strict";',
+      'import { createContext, SourceTextModule, runInContext } from "node:vm";',
+      "",
+      "const context = createContext(Object.create(null), {",
+      "  codeGeneration: { strings: false, wasm: false },",
+      "});",
+      "runInContext(`delete globalThis.console;`, context);",
+      "",
+      "// Capture the scoring intrinsics before submitted code evaluates. The",
+      "// factory closes over them and over the candidate it is given.",
+      "const invokeFactory = runInContext(",
+      "  `(() => {",
+      "    const encodeResult = JSON.stringify;",
+      "    const isArrayResult = Array.isArray;",
+      "    const isSafeInteger = Number.isSafeInteger;",
+      "    return (candidate) => (value) => {",
+      "      const result = candidate(value);",
+      '      if (!isArrayResult(result)) throw new Error("array required");',
+      "      const count = result.length;",
+      '      if (!isSafeInteger(count) || count < 0 || count > 1000) throw new Error("invalid result length");',
+      '      let out = "[";',
+      "      for (let index = 0; index < count; index += 1) {",
+      '        if (index > 0) out += ",";',
+      "        const item = result[index];",
+      "        const type = typeof item;",
+      '        if (type === "string") {',
+      '          if (item.length > 1024) throw new Error("string too large");',
+      "          out += encodeResult(item);",
+      '        } else if (type === "number" || type === "boolean") {',
+      "          out += encodeResult(item);",
+      "        } else if (item === null) {",
+      '          out += "null";',
+      "        } else {",
+      '          throw new Error("non-primitive element");',
+      "        }",
+      '        if (out.length > 8192) throw new Error("result too large");',
+      "      }",
+      '      out += "]";',
+      "      return out;",
+      "    };",
+      "  })()`,",
+      "  context,",
+      "  { timeout: 1000 },",
+      ");",
+      "",
+      `const submittedSource = ${submittedLiteral};`,
+      "const submitted = new SourceTextModule(submittedSource, {",
+      "  context,",
+      "  importModuleDynamically: () => {",
+      '    throw runInContext(`new Error("imports unavailable")`, context);',
+      "  },",
+      "});",
+      "await submitted.link(() => {",
+      '  throw new Error("imports are unavailable for this pure-function task");',
+      "});",
+      "await submitted.evaluate({ timeout: 1000 });",
+      "const candidate = submitted.namespace.keepLast;",
+      'if (typeof candidate !== "function") throw new Error("keepLast is not an exported function");',
+      "",
+      "// The candidate is captured in this closure, not stored in a mutable",
+      "// global. The invocation wrapper is installed under a random,",
+      "// non-configurable name so submitted code cannot replace either one.",
+      "const invoker = invokeFactory(candidate);",
+      `const invokeBinding = ${jsonLiteral(invokeBinding)};`,
+      "Object.defineProperty(context, invokeBinding, {",
+      "  value: invoker,",
+      "  writable: false,",
+      "  configurable: false,",
+      "  enumerable: false,",
+      "});",
+      "",
+      "function keepLast(items) {",
+      '  if (!Array.isArray(items) || items.length > 1000) throw new Error("invalid input array");',
+      "  for (const item of items) {",
+      "    const type = typeof item;",
+      '    if (type !== "string" && type !== "number" && type !== "boolean" && item !== null) {',
+      '      throw new Error("invalid input element");',
+      "    }",
+      "  }",
+      "  const literal = JSON.stringify(items);",
+      "  const encoded = runInContext(`${invokeBinding}(${literal})`, context, { timeout: 1000 });",
+      '  if (typeof encoded !== "string") throw new Error("result serialization failed");',
+      "  const parsed = JSON.parse(encoded);",
+      '  if (!Array.isArray(parsed)) throw new Error("array required");',
+      "  return parsed;",
+      "}",
+      "",
+      `test(${jsonLiteral(
+        behavioral ? "completed behavioral assertions" : "keeps the last element",
+      )}, () => {`,
+      "  assert.deepEqual(keepLast([]), []);",
+      "  assert.deepEqual(keepLast([1]), [1]);",
+      "  assert.deepEqual(keepLast([1, 2]), [1, 2]);",
+      '  assert.deepEqual(keepLast(["a", "b", "c"]), ["a", "b", "c"]);',
+      `  console.log(${jsonLiteral(completionToken)});`,
+      "});",
+      "",
+    ].join("\n") + "\n"
+  );
+}
 
 export async function runAuthoritativeVerification(
   root,
   source,
   { signal, timeoutMs = AUTHORITATIVE_TEST_TIMEOUT_MS, home = null, behavioral = false } = {},
 ) {
-  const directory = join(root, "authoritative");
   const completionToken = `matrix-behavior-complete-${randomBytes(24).toString("hex")}`;
   let completed = false;
+  let directory;
   try {
-    mkdirSync(join(directory, "src"), { recursive: true, mode: 0o750 });
-    mkdirSync(join(directory, "test"), { recursive: true, mode: 0o750 });
-    writeFileSync(join(directory, PACKAGE_PATH), PACKAGE_SOURCE, { mode: 0o640 });
-    writeFileSync(
-      join(directory, TEST_PATH),
-      behavioral
-        ? BEHAVIORAL_TEST_SOURCE.replace("BEHAVIORAL_COMPLETION_TOKEN", completionToken)
-        : TEST_SOURCE.replace("});", `  console.log(${JSON.stringify(completionToken)});\n});`),
-      {
-        mode: 0o640,
-      },
-    );
-    writeFileSync(join(directory, ALLOWED_EDIT_PATH), source ?? BUGGY_SOURCE, { mode: 0o640 });
+    mkdirSync(root, { recursive: true, mode: 0o750 });
+    directory = mkdtempSync(join(root, "authoritative-"));
   } catch {
     return {
       ok: false,
@@ -212,16 +293,22 @@ export async function runAuthoritativeVerification(
       failed: null,
       skipped: null,
       timedOut: false,
-      error: "authoritative fixture could not be written",
+      error: "authoritative fixture directory could not be created",
     };
   }
 
-  // The fixture executes model-written code. Supply only the variables needed
-  // to launch Node, give it a disposable home, and run it through the shared
-  // trusted test path: exact-plan authorization, sanitized environment,
-  // bounded output, cancellation and trust/execution audits all apply here.
-  // The environment is deliberately allowlisted rather than derived from the
-  // parent, so arbitrary provider or repository variables cannot be observed.
+  // The test source never touches disk. It is generated here and written to
+  // the child's stdin, so the workspace process has no authoritative fixture
+  // to pre-create, replace, or turn into a FIFO before scoring runs.
+  const testSource = authoritativeTestSource(source, completionToken, behavioral);
+
+  // The child executes model-written code inside the host test module. Supply
+  // only the variables needed to launch Node, give it a disposable home, and
+  // run it through the shared trusted test path: exact-plan authorization,
+  // sanitized environment, bounded output, cancellation and trust/execution
+  // audits all apply here. The environment is deliberately allowlisted rather
+  // than derived from the parent, so arbitrary provider or repository
+  // variables cannot be observed.
   const environment = {
     PATH: process.env.PATH,
     SYSTEMROOT: process.env.SYSTEMROOT,
@@ -229,13 +316,13 @@ export async function runAuthoritativeVerification(
     TMPDIR: directory,
     NO_COLOR: "1",
   };
-  const auditHome = home ?? join(root, "authoritative-home");
+  const auditHome = home ?? join(directory, "home");
   const plan = {
     file: process.execPath,
-    args: [...(behavioral ? ["--experimental-vm-modules"] : []), "--test", TEST_PATH],
+    args: ["--experimental-vm-modules", "--test-reporter=tap", "--input-type=module", "-"],
     cwd: directory,
     framework: "node --test",
-    display: `node --test ${TEST_PATH}`,
+    display: "node --test (inline authoritative source via stdin)",
   };
   const policy = createTestPolicy({
     home: auditHome,
@@ -248,6 +335,7 @@ export async function runAuthoritativeVerification(
       home: auditHome,
       cwd: directory,
       env: environment,
+      input: testSource,
       timeoutMs,
       signal,
       cleanupProcessGroup: true,
@@ -311,6 +399,12 @@ export async function runAuthoritativeVerification(
       outputTruncated: false,
       error: "authoritative test execution failed",
     };
+  } finally {
+    try {
+      rmSync(directory, { recursive: true, force: true });
+    } catch {
+      // The owning temp root is removed by the caller; residue stays visible there.
+    }
   }
 }
 

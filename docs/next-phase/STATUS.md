@@ -1,5 +1,53 @@
 # Next-phase status and dispatch board
 
+**2026-11-02 independent re-review: CHANGES REQUIRED (P1)** on the reviewed
+v4 candidate `f54ce83`. Without a VM escape, submitted source could patch
+`node:assert/strict` in the authoritative run, and the behavioral gate serialized
+a candidate-controlled array with `JSON.stringify`, so `Array.prototype.toJSON`
+could substitute the input. A deliberately wrong `keepLast` returning `[]`
+produced `taskSuccess: true` with every check passing. The null-prototype context
+closed the prior host-constructor reproduction, but assertion and serialization
+authority still belonged to submitted code. See
+[the re-review](reports/2026-11-02-eval-scoring-re-review.md). The independent
+provider cache A → B → A check now fails closed and records only after a fresh
+probe. PRV-105 remains SUBMITTED; the provider phase is not accepted.
+
+**2026-11-02 scoring repair submitted.** Both independent verification runs now
+import a host-controlled shim: submitted source is evaluated in a null-prototype
+VM context with no Node APIs, imports or runtime code generation, and only
+bounded primitive results are marshaled back to host assertions. The original
+assert-patch/`toJSON` reproduction now reports `authoritative false`,
+`behavioral false`, `taskSuccess false`, and `ok false`. This is an implementer
+submission, not acceptance; independent re-review is required. See
+[the repair](reports/2026-11-02-eval-scoring-repair.md).
+
+**2026-11-02 candidate-binding finding and repair.** A follow-up review found that
+the first host shim still stored the candidate in a mutable VM global
+(`context.candidate = candidate`). A submitted module could install a `candidate`
+accessor on `globalThis`, absorb the host assignment and return a fake identity
+function, making a wrong `keepLast` pass both gates and the ordinary evaluation path.
+The shim now captures the candidate in a VM closure and installs the per-call invoker
+under a random non-configurable name. The end-to-end reproduction reports
+`authoritative false`, `behavioral false`, `taskSuccess false` and `ok false`.
+Independent re-review is required. See
+[the candidate-binding repair](reports/2026-11-02-eval-candidate-binding-repair.md).
+
+**2026-11-02 authoritative fixture-tamper finding and repair.** Adversarial review of
+the binding repair found that the agent's own unsandboxed test child could pre-create
+the authoritative `src/bounds.js` path as a FIFO and spawn a detached watcher. The
+watcher replaced the host shim with one that read the completion token and returned the
+input, so a wrong `keepLast` returning `[]` passed every check. The authoritative test
+is now generated in the evaluator and delivered on stdin; there is no writable
+authoritative fixture, shim, submitted file, or predictable fixture directory. The
+source and token are absent from argv and audits, and a regression pre-creates the old
+FIFO path and still fails a wrong source closed. The original FIFO end-to-end attack now
+reports `authoritative false`, `behavioral false`, `taskSuccess false` and `ok false`.
+`npm run check` passes 753 tests with no failures or skips and all critical coverage
+floors met on both Node 24.21.0 and Node 22.23.4. An intermediate Node 22 run hit the known
+unrelated 10 ms `provider-catalog` timing flake; that file passed 16/16 alone and the
+full rerun passed. Independent re-review is required. See the same
+[binding and fixture-tamper repair](reports/2026-11-02-eval-candidate-binding-repair.md).
+
 The latest v4 evaluator repair passes the full engineering gate on Node 22 and
 Node 24: 746 tests each, with no failures or skips. VM-constructor escapes,
 forged output and incomplete assertion runs fail; equivalent valid solutions pass.
@@ -7,16 +55,15 @@ The default offline evaluation and package checks pass on both versions. See
 [final repair evidence](reports/2026-11-02-eval-final-repair.md) for candidate
 identity, regressions and limits. Independent phase acceptance remains open.
 
-The early-exit scoring bypass has a repair submitted for independent review.
-Task revision v3 requires a separate pure-function behavioral gate whose assertions
-run outside the submitted module context. Both that gate and the original fixture
-verification must pass. Early exit, forged TAP and wrong-return regressions are
-included; acceptance remains open.
-The full Node 24 gate passed 745 tests without failures or skips. Node 22's
-15-test provider-evaluation suite and the 16-case default offline baseline passed.
-Logs: `/tmp/matrix-exit-check.log`, `/tmp/matrix-exit-tests22.log`, and
-`/tmp/matrix-exit-offline.log`. The original early-exit reproduction now reports
-failed edit/verification checks and taskSuccess false.
+The early-exit scoring bypass repair chain reached task revision v4. The original
+early-exit reproduction reports failed edit/verification checks and
+`taskSuccess false`, and the v3/v4 gates added a separate pure-function behavioral
+gate plus per-run completion receipts. The independent re-review above nevertheless
+returned **CHANGES REQUIRED (P1)**: another mechanism in the same failure family
+still controls the verdict. The 745-test Node 24 gate, Node 22's 15-test
+provider-evaluation suite and the 16-case default offline baseline were implementer
+evidence for that repair, not acceptance. Logs: `/tmp/matrix-exit-check.log`,
+`/tmp/matrix-exit-tests22.log`, and `/tmp/matrix-exit-offline.log`.
 
 The three evaluation-review findings have a repair submitted for independent
 review: both test runs use an allowlisted environment, cancellation aborts the
@@ -113,15 +160,15 @@ for later phases. Only the chief records ACCEPTED against exact candidate eviden
 
 ## Active provider phase
 
-| Task    | Status    | Owner / checkout                                         | Prerequisite / next action                                                                                                                                                                                                             | Evidence / verdict                                                                                                                                                                               |
-| ------- | --------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| PRV-101 | SUBMITTED | Chief/contracts implementer, `/home/mitravanu/matrix`    | R2/R4/RR1/RR3 repaired 2026-11-01; independent re-review required                                                                                                                                                                      | 16 config tests; repaired-candidate gate below                                                                                                                                                   |
-| PRV-102 | SUBMITTED | Chief/transport implementer, owner-directed exception    | R3/R5 repaired 2026-11-01; PRV-101 still not independently accepted                                                                                                                                                                    | 14 transport + 20 legacy tests; repaired-candidate gate below                                                                                                                                    |
-| PRV-103 | SUBMITTED | Chief/catalog implementer, owner-directed exception      | R3/RR3/D1/D2 and check-4 timeout repaired 2026-11-01                                                                                                                                                                                   | 16 catalog tests; repaired-candidate gate below                                                                                                                                                  |
-| PRV-104 | PARTIAL   | Chief/integration implementer                            | Picker, exact target, session binding, explicit built-in routing, TTY `--provider` preset, exact-ID entry and `providers test` delivered 2026-11-01; picker/resume and probe review defects repaired; probe hostile-stream cases added | Picker/app/session/probe/CLI regressions; 719-test gate; re-review required                                                                                                                      |
-| PRV-105 | SUBMITTED | Compatibility/eval implementer, `/home/mitravanu/matrix` | Opt-in evaluation delivered 2026-11-02; package/test-runner integrity & VM constructor escape repaired; PRV-102/103/104 still SUBMITTED/PARTIAL; re-review required                                                                    | 15 provider-eval tests; package-script denial, VM escape & completion token regressions; 745-test gate; default eval PASS; [repair report](reports/2026-11-02-provider-eval-vm-escape-repair.md) |
-| PRV-106 | BLOCKED   | Unassigned                                               | P0 for fixture preparation; integrated candidate for audit                                                                                                                                                                             | None                                                                                                                                                                                             |
-| PRV-107 | BLOCKED   | Chief role; no active implementation reservation         | Submitted PRV-101–106 evidence; independent review and P3                                                                                                                                                                              | None                                                                                                                                                                                             |
+| Task    | Status    | Owner / checkout                                         | Prerequisite / next action                                                                                                                                                                                                                                                                                                                                                                                   | Evidence / verdict                                                                                                                                                                                                                       |
+| ------- | --------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PRV-101 | SUBMITTED | Chief/contracts implementer, `/home/mitravanu/matrix`    | R2/R4/RR1/RR3 repaired 2026-11-01; independent re-review required                                                                                                                                                                                                                                                                                                                                            | 16 config tests; repaired-candidate gate below                                                                                                                                                                                           |
+| PRV-102 | SUBMITTED | Chief/transport implementer, owner-directed exception    | R3/R5 repaired 2026-11-01; PRV-101 still not independently accepted                                                                                                                                                                                                                                                                                                                                          | 14 transport + 20 legacy tests; repaired-candidate gate below                                                                                                                                                                            |
+| PRV-103 | SUBMITTED | Chief/catalog implementer, owner-directed exception      | R3/RR3/D1/D2 and check-4 timeout repaired 2026-11-01                                                                                                                                                                                                                                                                                                                                                         | 16 catalog tests; repaired-candidate gate below                                                                                                                                                                                          |
+| PRV-104 | PARTIAL   | Chief/integration implementer                            | Picker, exact target, session binding, explicit built-in routing, TTY `--provider` preset, exact-ID entry and `providers test` delivered 2026-11-01; picker/resume and probe review defects repaired; probe hostile-stream cases added                                                                                                                                                                       | Picker/app/session/probe/CLI regressions; 719-test gate; re-review required                                                                                                                                                              |
+| PRV-105 | SUBMITTED | Compatibility/eval implementer, `/home/mitravanu/matrix` | Opt-in evaluation delivered 2026-11-02; package/test-runner integrity & VM constructor escape repaired; re-review found CHANGES REQUIRED (P1) on assertion/serialization authority; host-shim repair submitted, then a follow-up candidate-binding bypass was repaired; adversarial review then found and repaired a FIFO fixture-tamper bypass; re-review required; PRV-102/103/104 still SUBMITTED/PARTIAL | 22 provider-eval tests; package-script denial, VM escape, assert-patch, `toJSON`, candidate-binding, fixture-tamper and audit-leak regressions; [binding and fixture-tamper repair](reports/2026-11-02-eval-candidate-binding-repair.md) |
+| PRV-106 | BLOCKED   | Unassigned                                               | P0 for fixture preparation; integrated candidate for audit                                                                                                                                                                                                                                                                                                                                                   | None                                                                                                                                                                                                                                     |
+| PRV-107 | BLOCKED   | Chief role; no active implementation reservation         | Submitted PRV-101–106 evidence; independent review and P3                                                                                                                                                                                                                                                                                                                                                    | None                                                                                                                                                                                                                                     |
 
 ## Deferred durable phase
 
@@ -612,35 +659,41 @@ case. See the [repair report](reports/2026-11-02-provider-eval-package-repair.md
 
 ## Audit log
 
-| Date       | Candidate                                      | Reviewer                                         | Verdict                           | Follow-up                                                                                               |
-| ---------- | ---------------------------------------------- | ------------------------------------------------ | --------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| 2026-10-29 | Planning package against e1b3c66               | Chief planning self-review                       | Prepared for PRV-101 dispatch     | All runtime/provider compatibility acceptance pending                                                   |
-| 2026-10-30 | PRV-101 candidate (working tree, base e1b3c66) | Chief self-review, not independent               | SUBMITTED                         | 598 tests pass, 0 fail/skip; check exit 0; Node 24 only. Independent PRV-106-style reproduction pending |
-| 2026-10-30 | PRV-102 candidate (working tree, base e1b3c66) | Owner-directed gate exception; chief self-review | SUBMITTED, not accepted           | 11 transport + 20 legacy tests pass; full gate below. PRV-101 independent review still outstanding      |
-| 2026-10-30 | PRV-103 + partial PRV-104 candidate            | Owner-directed gate exception; chief self-review | SUBMITTED / PARTIAL, not accepted | 8 new tests pass; UI, session binding, probes, audit and release decision remain open                   |
-| 2026-11-01 | PRV-101–104 candidate (617 tests)              | Independent review                               | CHANGES REQUIRED (R1–R5)          | All five reproduced against the candidate; see the review report                                        |
-| 2026-11-01 | Repaired candidate (634 tests)                 | Chief self-review, not independent               | SUBMITTED, not accepted           | R1–R5 fixed at cause with regressions; independent re-review required                                   |
-| 2026-11-01 | Repaired candidate (634 tests)                 | Independent re-review                            | CHANGES REQUIRED (RR1–RR3)        | Shared-file alias lock, header truncation and FIFO cache reproduced                                     |
-| 2026-11-01 | Repaired candidate (640 tests)                 | Chief self-review, not independent               | SUBMITTED, not accepted           | RR1–RR3 fixed at cause; independent re-review required                                                  |
-| 2026-11-01 | Repaired candidate (640 tests)                 | Independent review 3                             | CHANGES REQUIRED (D1–D2)          | Caller cancellation and catalog freshness reproduced; earlier repros pass                               |
-| 2026-11-01 | Repaired candidate (645 tests)                 | Chief self-review, not independent               | SUBMITTED, not accepted           | D1–D2 fixed at cause; independent re-review required                                                    |
-| 2026-11-01 | Repaired candidate (645 tests)                 | Independent check 4                              | CHANGES REQUIRED (timeout status) | D1 and HTTP-failure D2 pass; timeout path rebuilt the catalog as fresh                                  |
-| 2026-11-01 | Repaired candidate (647 tests)                 | Chief self-review, not independent               | SUBMITTED, not accepted           | Timeout now records failure status; independent re-review required                                      |
-| 2026-11-01 | Repaired candidate (647 tests)                 | Independent check 5                              | PASS, no new findings             | Timeout persistence confirmed; phase still incomplete                                                   |
-| 2026-11-01 | Candidate `8ccc334a…` (647 tests)              | Independent full engineering check               | PASS on Node 22/24; audit fails   | 5 moderate dev-chain advisories; production audit clean; not the CLI candidate                          |
-| 2026-11-01 | Provider CLI candidate (656 tests)             | Independent CLI review                           | CHANGES REQUIRED (cached stale)   | Cached `models` read hid the failed refresh                                                             |
-| 2026-11-01 | Provider CLI repair (656 tests)                | Chief self-review, not independent               | SUBMITTED, not accepted           | Shared discovery summary plus real text/JSON CLI regression; re-review required                         |
-| 2026-11-01 | Provider CLI show/update (660 tests)           | Chief self-implementation, not independent       | SUBMITTED, not accepted           | Show/update actions with digest-safe writes; independent re-review required                             |
-| 2026-11-01 | Provider CLI show/update (660 tests)           | Independent show/update review                   | CHANGES REQUIRED (default erased) | Name-only update cleared an unlisted valid default; reproduced through the CLI                          |
-| 2026-11-01 | Provider CLI default repair (662 tests)        | Chief self-review, not independent               | SUBMITTED, not accepted           | Default preserved unless explicitly removed; independent re-review required                             |
-| 2026-11-01 | Provider picker/session candidate (675 tests)  | Chief self-implementation, not independent       | SUBMITTED, not accepted           | Picker, exact target and digest-bound resume; independent review required                               |
-| 2026-11-01 | PRV-104 interaction candidate (682 tests)      | Chief self-implementation, not independent       | SUBMITTED, not accepted           | TTY preset, explicit built-ins and exact-ID entry; independent review required                          |
-| 2026-11-01 | PRV-104 interaction candidate (682 tests)      | Independent picker/resume review                 | CHANGES REQUIRED (3 defects)      | Remote `local`, built-in resume identity and uncatalogued manual resume reproduced                      |
-| 2026-11-01 | Picker/resume repair candidate (688 tests)     | Chief self-implementation, not independent       | SUBMITTED, not accepted           | All three defects repaired at cause with regressions; re-review required                                |
-| 2026-11-02 | PRV-105 opt-in eval candidate (716 tests)      | Chief self-implementation, not independent       | SUBMITTED, not accepted           | 5 provider-eval tests and a fake-provider CLI run; default eval unchanged; independent review required  |
-| 2026-11-02 | Probe stream-bound repair (717 tests)          | Chief self-implementation, not independent       | SUBMITTED, not accepted           | P2 early argument-bound termination and reader cancellation regression; re-review required              |
-| 2026-11-02 | PRV-105 eval review repairs (719 tests)        | Chief self-implementation, not independent       | SUBMITTED, not accepted           | Weakened-test rejection and preflight credential binding; re-review required                            |
-| 2026-11-02 | PRV-105 package/test-runner repair (721 tests) | Chief self-implementation, not independent       | SUBMITTED, not accepted           | Non-source edits denied; package/test bytes protected; authoritative fixture verification               |
+| Date       | Candidate                                               | Reviewer                                         | Verdict                           | Follow-up                                                                                                                                                    |
+| ---------- | ------------------------------------------------------- | ------------------------------------------------ | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-10-29 | Planning package against e1b3c66                        | Chief planning self-review                       | Prepared for PRV-101 dispatch     | All runtime/provider compatibility acceptance pending                                                                                                        |
+| 2026-10-30 | PRV-101 candidate (working tree, base e1b3c66)          | Chief self-review, not independent               | SUBMITTED                         | 598 tests pass, 0 fail/skip; check exit 0; Node 24 only. Independent PRV-106-style reproduction pending                                                      |
+| 2026-10-30 | PRV-102 candidate (working tree, base e1b3c66)          | Owner-directed gate exception; chief self-review | SUBMITTED, not accepted           | 11 transport + 20 legacy tests pass; full gate below. PRV-101 independent review still outstanding                                                           |
+| 2026-10-30 | PRV-103 + partial PRV-104 candidate                     | Owner-directed gate exception; chief self-review | SUBMITTED / PARTIAL, not accepted | 8 new tests pass; UI, session binding, probes, audit and release decision remain open                                                                        |
+| 2026-11-01 | PRV-101–104 candidate (617 tests)                       | Independent review                               | CHANGES REQUIRED (R1–R5)          | All five reproduced against the candidate; see the review report                                                                                             |
+| 2026-11-01 | Repaired candidate (634 tests)                          | Chief self-review, not independent               | SUBMITTED, not accepted           | R1–R5 fixed at cause with regressions; independent re-review required                                                                                        |
+| 2026-11-01 | Repaired candidate (634 tests)                          | Independent re-review                            | CHANGES REQUIRED (RR1–RR3)        | Shared-file alias lock, header truncation and FIFO cache reproduced                                                                                          |
+| 2026-11-01 | Repaired candidate (640 tests)                          | Chief self-review, not independent               | SUBMITTED, not accepted           | RR1–RR3 fixed at cause; independent re-review required                                                                                                       |
+| 2026-11-01 | Repaired candidate (640 tests)                          | Independent review 3                             | CHANGES REQUIRED (D1–D2)          | Caller cancellation and catalog freshness reproduced; earlier repros pass                                                                                    |
+| 2026-11-01 | Repaired candidate (645 tests)                          | Chief self-review, not independent               | SUBMITTED, not accepted           | D1–D2 fixed at cause; independent re-review required                                                                                                         |
+| 2026-11-01 | Repaired candidate (645 tests)                          | Independent check 4                              | CHANGES REQUIRED (timeout status) | D1 and HTTP-failure D2 pass; timeout path rebuilt the catalog as fresh                                                                                       |
+| 2026-11-01 | Repaired candidate (647 tests)                          | Chief self-review, not independent               | SUBMITTED, not accepted           | Timeout now records failure status; independent re-review required                                                                                           |
+| 2026-11-01 | Repaired candidate (647 tests)                          | Independent check 5                              | PASS, no new findings             | Timeout persistence confirmed; phase still incomplete                                                                                                        |
+| 2026-11-01 | Candidate `8ccc334a…` (647 tests)                       | Independent full engineering check               | PASS on Node 22/24; audit fails   | 5 moderate dev-chain advisories; production audit clean; not the CLI candidate                                                                               |
+| 2026-11-01 | Provider CLI candidate (656 tests)                      | Independent CLI review                           | CHANGES REQUIRED (cached stale)   | Cached `models` read hid the failed refresh                                                                                                                  |
+| 2026-11-01 | Provider CLI repair (656 tests)                         | Chief self-review, not independent               | SUBMITTED, not accepted           | Shared discovery summary plus real text/JSON CLI regression; re-review required                                                                              |
+| 2026-11-01 | Provider CLI show/update (660 tests)                    | Chief self-implementation, not independent       | SUBMITTED, not accepted           | Show/update actions with digest-safe writes; independent re-review required                                                                                  |
+| 2026-11-01 | Provider CLI show/update (660 tests)                    | Independent show/update review                   | CHANGES REQUIRED (default erased) | Name-only update cleared an unlisted valid default; reproduced through the CLI                                                                               |
+| 2026-11-01 | Provider CLI default repair (662 tests)                 | Chief self-review, not independent               | SUBMITTED, not accepted           | Default preserved unless explicitly removed; independent re-review required                                                                                  |
+| 2026-11-01 | Provider picker/session candidate (675 tests)           | Chief self-implementation, not independent       | SUBMITTED, not accepted           | Picker, exact target and digest-bound resume; independent review required                                                                                    |
+| 2026-11-01 | PRV-104 interaction candidate (682 tests)               | Chief self-implementation, not independent       | SUBMITTED, not accepted           | TTY preset, explicit built-ins and exact-ID entry; independent review required                                                                               |
+| 2026-11-01 | PRV-104 interaction candidate (682 tests)               | Independent picker/resume review                 | CHANGES REQUIRED (3 defects)      | Remote `local`, built-in resume identity and uncatalogued manual resume reproduced                                                                           |
+| 2026-11-01 | Picker/resume repair candidate (688 tests)              | Chief self-implementation, not independent       | SUBMITTED, not accepted           | All three defects repaired at cause with regressions; re-review required                                                                                     |
+| 2026-11-02 | PRV-105 opt-in eval candidate (716 tests)               | Chief self-implementation, not independent       | SUBMITTED, not accepted           | 5 provider-eval tests and a fake-provider CLI run; default eval unchanged; independent review required                                                       |
+| 2026-11-02 | Probe stream-bound repair (717 tests)                   | Chief self-implementation, not independent       | SUBMITTED, not accepted           | P2 early argument-bound termination and reader cancellation regression; re-review required                                                                   |
+| 2026-11-02 | PRV-105 eval review repairs (719 tests)                 | Chief self-implementation, not independent       | SUBMITTED, not accepted           | Weakened-test rejection and preflight credential binding; re-review required                                                                                 |
+| 2026-11-02 | PRV-105 package/test-runner repair (721 tests)          | Chief self-implementation, not independent       | SUBMITTED, not accepted           | Non-source edits denied; package/test bytes protected; authoritative fixture verification                                                                    |
+| 2026-11-02 | PRV-105 v4 scoring repair (746 tests; `f54ce83…`)       | Independent re-review, new session               | CHANGES REQUIRED (P1)             | Assertion-authority and `toJSON` bypass reproduced end-to-end; see [report](reports/2026-11-02-eval-scoring-re-review.md)                                    |
+| 2026-11-02 | PRV-105 host-shim scoring repair (18 eval, 141 focused) | Chief self-implementation, not independent       | SUBMITTED, not accepted           | Assert-patch/`toJSON` bypass fails both gates and task success; independent re-review required; [repair](reports/2026-11-02-eval-scoring-repair.md)          |
+| 2026-11-02 | PRV-105 candidate-binding bypass (20 eval)              | Follow-up review finding                         | CHANGES REQUIRED (P1)             | `context.candidate` accessor made a wrong function pass both gates and `taskSuccess`; see [finding](reports/2026-11-02-eval-candidate-binding-repair.md)     |
+| 2026-11-02 | PRV-105 candidate-binding repair (20 eval, 143 focused) | Chief self-implementation, not independent       | SUBMITTED, not accepted           | Candidate captured in a VM closure; random non-configurable invoker; end-to-end bypass fails closed; re-review required                                      |
+| 2026-11-02 | PRV-105 authoritative fixture-tamper bypass             | Follow-up adversarial review finding             | CHANGES REQUIRED (P1)             | Pre-created FIFO and detached watcher replaced the shim; wrong source passed every check; see [finding](reports/2026-11-02-eval-candidate-binding-repair.md) |
+| 2026-11-02 | PRV-105 fixture-tamper repair (22 eval, 40 focused)     | Chief self-implementation, not independent       | SUBMITTED, not accepted           | Inline stdin scoring source; no writable fixture; old FIFO path and audit-leak regressions; original attack fails closed; re-review required                 |
 
 ## Historical baseline
 
@@ -745,8 +798,15 @@ chief releases the remaining phase; the chief's own self-review cannot satisfy t
 The picker, digest-bound resume, TTY preset, explicit built-ins, exact-ID entry, profile
 replacement and the `providers test` probe are implemented; an independent reviewer must
 still check their target identity, availability, refusal and retention paths. The PRV-105
-opt-in provider evaluation is SUBMITTED; independent re-review, the PRV-106 adversarial
-audit and PRV-107 integration are still open. A development dependency override
+opt-in provider evaluation is SUBMITTED; its v4 scoring repair received an independent
+**CHANGES REQUIRED (P1)** verdict because submitted code could patch the authoritative
+assertions and substitute behavioral output through `toJSON`. The implementer has now
+submitted a host-shim repair: both independent verification runs isolate submitted source
+and keep assertions and result marshaling in the host realm. A follow-up finding then
+showed the shim still stored the candidate in a mutable VM global; the repair now captures
+it in a VM closure under a random non-configurable invoker. The original and
+candidate-binding bypasses fail both gates and task success; independent re-review is
+required before acceptance. PRV-106 adversarial audit and PRV-107 integration remain open. A development dependency override
 resolved the five reported advisories, but its major-version compatibility still
 needs independent review. **The dynamic-provider phase is not complete.**
 Record actual ownership and evidence as work occurs. Do not prefill future success.

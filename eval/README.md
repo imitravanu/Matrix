@@ -137,29 +137,40 @@ The exact credential and endpoint bound before the run are the ones execution us
 caller-supplied credential is not replaced by `process.env`. The fixture test file and
 `package.json` test runner must remain byte-identical and may receive no applied edit; a
 weakened test or substituted runner fails the run even when the run's own verification passes.
-Scoring also runs the original fixture test independently against the final source bytes, using
-the original test file and runner files, so a model cannot select the verification command. That
-run goes through the shared trusted test path: exact-plan authorization, a minimal allowlisted
-child environment with a disposable home, bounded and redacted output, cancellation, trust and
-execution audits, and owned process-group cleanup on normal exit, timeout and cancellation.
-Both test runs receive an allowlisted environment, excluding ambient provider credentials
-regardless of their variable names. This is not a filesystem or network sandbox for model-written
-code. The authoritative runner cleans up owned descendants. Its evidence class is `opt-in-provider`; it is not availability, quality, pricing,
-context-length or latency evidence, and one run is not generalized to another model. A fake-provider
+Scoring also runs an evaluator-generated test independently against the final source bytes, so a
+model cannot select the verification command or supply the scoring fixture. The test module is
+written to the child's stdin; no authoritative shim or test file exists at a predictable
+filesystem path. The final source is not executed in the test process: the inline host module
+evaluates it in a null-prototype VM context with runtime code generation and imports unavailable,
+then marshals only bounded primitive array results back to the host. Assertions and the completion
+receipt stay in the host realm and cannot be replaced by submitted code. That test run goes through
+the shared trusted test path: exact-plan authorization, a minimal allowlisted child environment
+with a disposable home, bounded and redacted output, cancellation, trust and execution audits, and
+process-group cleanup on normal exit, timeout and cancellation. The submitted source and completion
+token are never part of argv, the displayed command, or the trust/execution audit. The agent's own
+test run still uses the normal workspace toolchain; it is evidence, not the scoring authority.
+The two verification runs receive an allowlisted environment, excluding ambient provider
+credentials regardless of their variable names. This is not a general filesystem or network
+sandbox for arbitrary code. Its evidence class is `opt-in-provider`; it is not availability,
+quality, pricing, context-length or latency evidence, and one run is not generalized to another
+model. A fake-provider
 loopback coding run is covered deterministically by `test/provider-eval.test.mjs`; live runs remain
 explicitly user-authorized and are never required for the default gate. `MATRIX_PROVIDER_EVAL_REPORTS`
 overrides the report directory for an isolated run; tests use a temporary directory and never write
 into the checked-out `eval/reports/`.
 
-Provider task revision v4 also requires a pure-function behavioral gate. Submitted
-ES modules run in a separate Node child using a VM context without Node APIs,
-imports, or runtime code generation. The outer harness checks returned arrays for
-four inputs. Early process exit and forged TAP cannot satisfy this gate. A VM is
-not a general security sandbox; the ordinary coding/test run still requires trusted
-execution. The JSON report includes `behavioralVerification` alongside the original
-fixture test result, and both must pass for task success.
-
-The v4 gate uses a context with a null prototype and removes its default console.
-Only primitive serialized results cross into the assertion harness, under the VM
-execution timeout. Both verification runs require a per-run completion receipt
-emitted after every assertion; a zero exit status alone fails verification.
+Provider task revision v4 also requires a separate pure-function behavioral gate.
+Both scoring gates generate the same inline host harness, which evaluates submitted ES
+modules in a null-prototype VM context without Node APIs, imports, or runtime code
+generation. The candidate is captured in a VM closure rather than stored in a mutable
+global; the per-call invoker is installed under a random, non-configurable name. The
+outer harness checks returned arrays for four inputs. Early process exit, forged TAP,
+assertion patching, candidate-controlled JSON serialization and global-binding
+replacement cannot satisfy either gate. Pre-creating or replacing the old on-disk
+authoritative paths, including with a FIFO, cannot affect scoring because the generated
+test source is never read from disk. Both verification runs require a per-run
+completion receipt emitted after every assertion; a zero exit status alone fails
+verification. A VM is not a general security sandbox; the ordinary coding/test run still
+requires trusted execution. The JSON report includes `authoritativeVerification` and
+`behavioralVerification` alongside the agent's own test result, and both independent
+checks must pass for task success.
