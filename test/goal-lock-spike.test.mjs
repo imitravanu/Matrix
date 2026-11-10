@@ -22,7 +22,15 @@ import { join } from "node:path";
 import { once } from "node:events";
 import { syncBuiltinESMExports } from "node:module";
 import { linuxBwrapArguments } from "../lib/linux-bwrap.mjs";
-import { copyDemo, contentChunks, sseResponse, toolCallChunks, waitFor } from "./helpers.mjs";
+import {
+  PROVIDER_ENVIRONMENT_KEYS,
+  copyDemo,
+  contentChunks,
+  patchEnv,
+  sseResponse,
+  toolCallChunks,
+  waitFor,
+} from "./helpers.mjs";
 import { runModelAgent } from "../lib/model-agent.mjs";
 import { detectProject } from "../lib/project.mjs";
 import { resolveModel } from "../lib/models.mjs";
@@ -2685,6 +2693,16 @@ test(
     const testHome = mkdtempSync(join(tmpdir(), "matrix-live-writer-home-"));
     t.after(() => rmSync(testHome, { recursive: true, force: true }));
     const policy = createTestPolicy({ home: testHome, headless: true, allowTests: true });
+
+    // The model agent refuses to start without a provider credential. Give it
+    // a fake one and an isolated home so this test is hermetic on a host with
+    // no stored credentials; the mocked fetch never sends it anywhere.
+    const restoreProviderEnv = patchEnv({
+      HOME: testHome,
+      ...Object.fromEntries(PROVIDER_ENVIRONMENT_KEYS.map((key) => [key, undefined])),
+      OPENROUTER_API_KEY: "test-key",
+    });
+    t.after(restoreProviderEnv);
 
     // 1. Invoke real write path with normal approval flow while lock is held
     let approvalRequested = false;
