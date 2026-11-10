@@ -1,5 +1,344 @@
 # Next-phase status and dispatch board
 
+**INT-101 ACCEPTED on 2026-11-10.** The chief closed C1 after reviewing the
+existing namespace test repair and independently checking identity cases and
+SIGKILL recovery. The current DUR-005 23-file candidate is
+`10d99cb02543adccf7bea8859632f21a0910ba6e8d25493c4fa5bd01f37dc749`; only
+`test/goal-runtime.test.mjs` changed from the earlier accepted candidate.
+DUR-006 remains `da9d9d752d0c`, and the accepted QA-101 harness and audit hashes
+still match. The 39-file integrated candidate is `dfa62616fa86221aa37601e1c271a9b7fe88e6d3bfc66340e4014a116e973847`.
+
+Both full engineering logs show 1,033/1,033 passing tests on Node 22 and Node 24.
+The repair passed 20/20 stress runs. The chief reran the focused namespace and
+SIGKILL tests, the durability harness on both runtimes, eval (16/16), smoke
+(32 frames) and package verification (109 files). C2–C4 report corrections are
+also closed. See the [final chief disposition](reports/2026-11-09-int101-integration.md#12-chief-closure-2026-11-10)
+and [updated DUR-005 submission](submissions/DUR-005.md#november-10-c1-test-oracle-repair).
+Local durability integration is complete. Hosted CI and live capability
+improvement remain NOT EVALUATED. Release actions require separate authorization.
+
+**QA-101 ACCEPTED on 2026-11-09.** The independent acceptance review of the
+durability adversarial audit issued **ACCEPT** in the
+[2026-11-09 acceptance review report](reports/2026-11-09-qa101-acceptance-review.md).
+The candidate files match the reviewed hashes: `eval/durability/run.mjs`
+(`e46b7a6f201e807d4f4601d71f0a13ef0ff0701b6901057694b258a35ed92334`) and
+`docs/next-phase/reports/2026-11-08-qa101-durability-audit.md`
+(`e501164b67616a120f6c3a1c3e0654071db015a7dba9bd9c92e64dd231bcabc6`) on base commit
+`ff55a2c2aaeb863e881a5a8d0e112eb78ded0204`, with DUR-006 14-file candidate SHA-256
+`da9d9d752d0c44b042cb8f608e8b50ca7eaef0498569c0c1870f37dcdecdbce8`, accepted DUR-005
+23-file runtime SHA-256 `17c6992a5a507b301d3297f69ce598cdf0046ef0078081d8f4b5e15a032aea02`,
+and clean `git diff --check`. Multi-runtime execution verified 18 PASS / 2 PARTIAL
+(0 FAIL) across the 20 crash-recovery cases, with 57 PASS / 2 NOT EVALUATED (0 FAIL)
+across 59 variants on both Node 24.21.0 and Node 22.23.1, with zero flakiness.
+Engineering gates (`syntax`, `lint`, `typecheck`, `format:check`) all exit 0, and
+recorded 1,032/1,032 test/coverage evidence is reused. The
+[chief disposition](reports/2026-11-09-qa101-acceptance-review.md#11-chief-disposition-2026-11-09)
+records that every mandatory CR case meets its criterion. CR-08 meets it through the
+verified-stopped branch of "verified stopped or resume refuses". For CR-16, a chief probe
+shows the production store refuses a post-cancel dispatch with `stale fence`, so the
+cutoff does not depend on the harness barrier. Durability accepted; capability improvement
+not evaluated. Follow-ons: CR-16 harness barrier forwards to the real store (P2, QA);
+cancel-versus-dispatch stop classification (P3, executor); CR-08 refusal-branch test hook
+(P3). See the [audit report](reports/2026-11-08-qa101-durability-audit.md)
+and [acceptance review](reports/2026-11-09-qa101-acceptance-review.md).
+
+**DUR-006 ACCEPTED on 2026-11-08.** The independent re-review of Finding R1
+issued **ACCEPT** in the
+[2026-11-08 R1 re-review report](reports/2026-11-08-dur006-r1-re-review.md).
+The current working tree was re-fingerprinted against candidate `da9d9d752d0c`
+before closure: base commit `ff55a2c2aaeb863e881a5a8d0e112eb78ded0204`, 14-file
+candidate aggregate SHA-256
+`da9d9d752d0c44b042cb8f608e8b50ca7eaef0498569c0c1870f37dcdecdbce8`, and the accepted
+DUR-005 23-file runtime fingerprint
+`17c6992a5a507b301d3297f69ce598cdf0046ef0078081d8f4b5e15a032aea02` all match
+the report exactly, and `git diff --check` is clean. The report reuses the
+recorded verification evidence (1,032/1,032 `npm run check` on Node 22.23.1
+and Node 24.21.0 with all coverage floors, 35/35 targeted DUR-006 tests, 16/16 eval
+contracts, 32 smoke frames, 109 pack files) along with the earlier verified
+reproductions and independent subprocess tests for Findings 1, 2, and R1. See the
+[submission](submissions/DUR-006.md),
+[independent review](reports/2026-11-08-dur006-independent-review.md),
+[repair re-review](reports/2026-11-08-dur006-repair-re-review.md), and
+[R1 re-review](reports/2026-11-08-dur006-r1-re-review.md).
+
+**DUR-005 ACCEPTED on 2026-11-08.** The independent verification of the
+follow-up repair's remaining Findings 3 and 7 issued **ACCEPT** in the
+[2026-11-08 follow-up findings report](reports/2026-11-08-dur005-followup-findings-3-7.md).
+The current working tree was re-fingerprinted against that report before closure:
+base commit `ff55a2c2aaeb863e881a5a8d0e112eb78ded0204`, 23-file candidate aggregate
+SHA-256 `17c6992a5a507b301d3297f69ce598cdf0046ef0078081d8f4b5e15a032aea02` and tracked
+patch digest `f8598a668cd9a25bc4d5d13aa5baf65bf224fa901615b8a707e315b85f1d295a` all
+match the report exactly, and `git diff --check` is clean. The report reuses the
+submitter's existing verification evidence (997/997 `npm run check` on Node 22.23.1
+and Node 24.21.0 with all coverage floors, 16/16 eval contracts, 32 smoke frames)
+and the earlier verdicts for the five already-closed findings, so no re-run was
+required for acceptance. See the
+[re-review](reports/2026-11-08-dur005-repair-re-review.md) and
+[follow-up submission](submissions/DUR-005.md#november-8-follow-up-repair).
+
+**PRV-107 ACCEPTED for the reviewed provider candidate.** The consolidated
+[acceptance review](reports/2026-11-04-prv107-provider-acceptance.md) records 24/24
+mandatory cases passing and the Node 22/24 engineering evidence. The accepted base
+is `ff55a2c`, with 98-file runtime fingerprint
+`2743c680fd6ad6549d9dfb2ae550585de756a0106cf6aebd1df01b24d9a2869c` and pre-report
+working-tree fingerprint `7617cd71ba4a3e7423ced18254e370129623443cc7862cbe953f3d47183f7dfe`.
+The tracing finding is closed for the documented Yama scope 2/3 threat model.
+F-1 and F-3 remain prerequisites for evaluator certificate use. F-2 limits reported
+success to conformance with the fixture until scoring improves. F-4 is deferred
+hardening. Live provider compatibility and quality remain NOT EVALUATED.
+
+**DUR-001 ACCEPTED on 2026-11-05.** The [independent re-review](reports/2026-11-05-dur001-independent-re-review.md)
+recommends acceptance for base `ff55a2c` and the five-file candidate SHA-256
+`71f7604be8181d45308d2602fc339bfff01a1134f668023de0416f55475c8528`.
+The tracked patch digest and five-file fingerprint match the reviewed checkout.
+The Linux lock spike shows
+that a detached child can write after a second writer acquires a released lock,
+including if it received and closed the descriptor. A Bubblewrap reaper holding the
+descriptor kept the second writer out after both the supervisor and command died.
+Killing the reaper exposed a teardown race on Node 22 and 24. A separate guardian
+that kept the lease until both the reaper and worker exited prevented early lock
+acquisition. Surviving writes stayed in the snapshot. See the
+[DUR-001 decision record](decisions/DUR-001.md).
+Dependent tasks use the reviewed DUR-001 contracts and ownership design.
+
+DUR-001 now includes the pure `lib/goal-contracts.mjs` metadata, lifecycle, evidence,
+budget, journal, operation-intent, dispatch, receipt and lease validators with tests in
+`test/goal-contracts.test.mjs`. The implementation adds checkJs and coverage gates for
+this module. Canonical bounded serialization, checksum links, sequence/generation
+rules and pre-mutation lease validation are part of the reviewed contract layer.
+Production process ownership, generation persistence and writer integration are
+implementation work for the dependent tasks. The interfaces and Node 22/24 results
+are in the decision record.
+
+The model-agent write demonstration now holds the Linux workspace lock through atomic
+replacement. A real contender at the rename boundary verifies that the lock remains held.
+The independent re-review confirmed the repair.
+
+**DUR-002 ACCEPTED for the Linux store boundary.** It implements lease-checked journal updates, previous checkpoints, recovery
+blobs, quota enforcement and read-only inspection. The
+[DUR-002 decision record](decisions/DUR-002.md) describes the commit protocol,
+fault tests and handoff to reconciliation. The [submission](submissions/DUR-002.md)
+records the independent acceptance of candidate `70e88900fe77` and the passing
+Node 22 and 24 checks. DUR-003 can use the accepted store for reconciliation.
+
+**DUR-003 ACCEPTED on 2026-11-06 for the implemented recovery boundary.** The
+previous [independent review](reports/2026-11-05-dur003-independent-review.md)
+returned **CHANGES REQUIRED** for candidate `09be91e971ea`: B1 hid later dispatched
+effects after an undispatched intent, B2 missed cancellation committed during
+the final validation read, and B3 silently overwrote targets replaced after
+that read. The [repaired submission](submissions/DUR-003.md) records six-file
+SHA-256 `b243209f0299f450f432fe93556bade953d5c0875c9a27af930f7d752df88f43`
+(four owned files: `c2a4651d870177a7d46c86c1508b69877fada35268ce405a9ba8f56460637eee`)
+on the same base `ff55a2c2aaeb863e881a5a8d0e112eb78ded0204`.
+
+The repair uses state-chain reconciliation across abandoned intents, re-reads
+commit authority after the final target read, and publishes through a
+quarantine/verify/no-clobber `link(2)` protocol with rollback, retention and
+cleanup reporting, including exact undo. It explicitly documents the residual
+fence-to-publication and crash-retention boundaries rather than claiming full
+store/filesystem atomicity. All three blockers were reproduced on Node 22 and
+24 and are covered by persistent regressions for edits, deletions, creations,
+undo, modes, cancellation, lease renewal, generation advance, cleanup failures,
+repeated edits across attempts and SIGKILL crash boundaries.
+
+The latest quarantine repair persists transaction identity before capture, surfaces
+unresolved commits during read-only recovery, and blocks effects and undo until
+operator reconciliation. Public results preserve accessible retention paths and
+cleanup-pending information. Self-review and 11 added regressions cover crash and
+cleanup-failure boundaries. The focused suite passes 98/98 tests.
+
+Verification: full `npm run check` 906/906 pass, 0 fail, 0 skip on Node 24.21.0 and
+Node 22.23.1 with coverage floors met; evaluation 16/16 contract pass, smoke 32
+frame checks, package dry-run 95 files, and `git diff --check` clean.
+
+The [independent acceptance review](reports/2026-11-06-dur003-acceptance-review.md)
+matched all three candidate identities and issued **ACCEPTED** for the implemented
+recovery boundary. It reproduced B1/B2/B3 as conservative, exercised 14 real-SIGKILL
+capture/verification/publication boundaries for write, delete, create and undo,
+cleanup retention and reopening, legacy artifacts, corrupt/oversized/unsafe metadata
+and dual-object rollback on Node 22.23.1 and Node 24.21.0, and re-ran the focused
+suite at 98/98 on both. Unresolved transaction artifacts still require operator
+reconciliation; the boundary blocks effects and undo until the retained evidence is
+resolved. Executor/controller integration (DUR-004/DUR-005), CLI/UI recovery
+(DUR-006), physical power loss and non-Linux platforms remain NOT EVALUATED. P3
+follow-ons: orphan pre-manifest staging files, cross-goal artifact over-block,
+unstructured corrupt-metadata refusals, and partial multi-entry undo retention
+reporting; none weakens the accepted boundary.
+
+**DUR-004 ACCEPTED on 2026-11-06 for the implemented executor boundary.** The
+[independent acceptance review](submissions/DUR-004.md#12-independent-acceptance-review-2026-11-06)
+matched the eight-file, six-file and tracked-patch identities, exercised surviving
+processes across workspace rename and replacement, concurrent admission, late
+callbacks and positive controls, and found no blocker. DUR-005 retains process
+reclamation and controller integration.
+The [DUR-004 submission](submissions/DUR-004.md) implements the
+resumable executor, bounded context and cumulative budgets in
+[`lib/goal-executor.mjs`](../../lib/goal-executor.mjs), [`lib/goal-context.mjs`](../../lib/goal-context.mjs)
+and [`lib/goal-budget.mjs`](../../lib/goal-budget.mjs), with focused tests and the
+[two-source-file scripted-provider demonstration](fixtures/dur004-scripted-resume.mjs).
+The revised six-file candidate is
+`bc78ec7f92e1a27676bb89e0359f7c10fc62dc521858aaef659b1cc5732b0250` on base `ff55a2c`
+(three owned modules `17767466fcd877cf37e0906c441fd363228bf0974e1a8d7333f69a68cc1b9999`);
+the accepted DUR-003 six-file fingerprint remains
+`b243209f0299f450f432fe93556bade953d5c0875c9a27af930f7d752df88f43`. Provider and
+tool reservations are durable before dispatch and survive retries, crashes and
+fresh-process resume; an interrupted provider retains its full reservation as
+unknown usage, and only an explicit upward amendment under the frozen caps moves a
+goal out of `budget-exhausted`. Context is rebuilt from trusted criteria,
+re-verified facts and receipt summaries with no tool-role transcript. Pause,
+cancellation and generation fencing refuse late callbacks; every provider and tool
+dispatch is bounded by a hard deadline that aborts, fences late results and safe-stops
+as `needs-attention`; three equivalent failures with unchanged evidence stop with a
+continuation requirement. Completion is evaluated only from current artifact bytes,
+fresh test evidence and explicit human decisions; model completion text is never
+evidence. Test evidence is bound to a fingerprint captured at dispatch over declared
+artifact and edited paths, so a change during execution (content, mode, creation,
+deletion) or after the test process exits cannot produce a pass, and evaluator
+snapshots must bind to the dispatched plan and bytes. Unresolved DUR-003 transaction
+artifacts still block effects and preserve the operator-recovery requirement.
+
+A deadline, pause, cancellation, adapter abort or unusable test observation now
+persists a receipt-backed `execution: {teardown: "unverified", attemptId, generation}`
+marker before the stop releases the lease, and a dispatched test/command with no
+receipt is itself a durable block. Every resume entry point consults that block and
+returns `safe-stop`/`teardown-unverified` without creating a generation, dispatching a
+provider request or starting a tool. Only a block-bound attestation from the trusted
+`executionOwnership.verifyTeardown` boundary can release it; elapsed time, PID
+disappearance, a settled adapter promise or a bare caller assertion cannot. Provider
+failures remain retryable because a remote request is uncertain usage, not surviving
+local execution. Kill/reclaim and lease reclamation stay in DUR-005; until that
+boundary exists, a goal whose test teardown is unverified safe-stops persistently.
+
+The final candidate additionally scopes that durable block to the canonical workspace:
+unresolved surviving execution of any goal bound to the same workspace identity now
+refuses a fresh goal before authority, generation, dispatch, edit or completion, so a
+new goal id, retry, restart, cancellation or elapsed time cannot bypass the block held
+by the original execution records. The small additive store read
+`createGoalStore.listWorkspaceGoals` supplies the sibling-goal discovery under the
+caller-held workspace write lock. Discovery matches the same path or the same
+device/inode pair, so renamed directories and replacement paths remain protected.
+
+Verification: full `npm run check` passes 961/961 with zero failures and skips on
+Node 24.21.0 and 22.23.1 after the identity repair. The affected store/executor
+suite passes 72 tests on Node 24. The renamed-workspace reproduction passes on
+both runtimes with the original child alive and zero new requests. Offline
+evaluation passes 16/16 contracts, smoke passes 32 frames, and packaging passes
+its 98-file dry run. See the submission for fingerprints and logs. Remaining limitations: live engine/controller
+wiring, cross-process lease reclamation, durable approvals and human-decision
+persistence belong to DUR-005/DUR-006; DUR-004 can detect but not tear down an owned
+process, so the durable block is only released through the DUR-005 process-ownership
+attestation and its marker is immutable until DUR-005 adds a durable reconciliation
+record; physical power loss, non-Linux platforms and live providers remain NOT
+EVALUATED. The new modules are not yet in the shared `jsconfig.json`/coverage
+ratchet; ad hoc `tsc --checkJs` passes and the full-suite report measures
+91.79/85.71/93.33 (budget), 95.38/79.83/100.00 (context), 88.28/77.03/92.31 (executor),
+97.80/80.00/100.00 (lock) and 99.76/98.13/100.00 (store) line/branch/function
+percentages; overall 93.87/84.30/95.10 (Node 24) and 93.89/84.14/95.10 (Node 22).
+
+**Current provider candidate: tracing finding closed within the reviewed scope.** The
+[independent Yama review](reports/2026-11-04-prv106-yama-tracing-verification.md) matches
+the runtime fingerprint below. It reproduced scope 0 refusal and scope 2 enforcement
+on Node 22 and 24 for the documented CLI and API. The finding is closed for
+unprivileged same-user tracing under the stated host requirements.
+
+The loopback workflow fixture passed on Node 24.21.0 and Node 22.23.1. Each run observed
+default edit denial, separate headless test denial, terminal edit and test approval,
+four real passing tests, exact byte undo, and six requests to the expected endpoint with
+the exact model ID. The fake credential was absent from the inspected artifacts.
+
+The owner reported 4/4 focused tests passing for PV-04, PV-14 and PV-16.
+The tests cover concurrent routing of one model ID through two separate endpoints and
+keys, selection invalidation after an endpoint change, restoration of the saved model,
+and CLI refusal and explicit reselection for a changed provider binding.
+
+The provider-removal demonstration passed on Node 24.21.0 and 22.23.1. Two profiles
+were added through the CLI with the same exact model ID and distinct loopback endpoints
+and fake keys. After the saved profile was removed, CLI resume exited 1, made zero
+requests to either endpoint, and preserved the saved binding. Explicitly selecting the
+replacement profile and exact model repaired the binding. A subsequent task sent one
+request to the replacement endpoint with its key and exact model, and zero to the old
+endpoint. The harness is in this chat's `work/provider-acceptance/provider-removal.mjs`.
+This covers the removed-profile workflow for PV-16 and adds routing evidence for PV-04.
+
+On the same working tree based on `ff55a2c`, both runtimes passed `npm run check`
+(758 tests, no failures or skips), `npm run eval` (16 contracts), `npm run smoke`
+(32 frames), `npm run pack:check` (90 files), and `git diff --check` passed.
+The tested tree's 258-file SHA-256 manifest digest is
+`1772555f02976a67ce22dc50625f41e9ce41c4fcf15929158807b23a0c76799b`.
+Logs and manifest are in this chat's `work/provider-acceptance/` directory.
+The consolidated verdict and advisory dispositions are recorded above.
+
+**2026-11-04 real Yama scope 2 verification passed.** A disposable QEMU/KVM guest with
+Linux `7.0.12+kali-amd64` ran the actual provider evaluation CLI against a loopback fixture
+as UID 1000 with zero effective capabilities. On Node 24.21.0 and Node 22.23.1 (the latter
+installed under `/opt`), the correct edit passed and the incorrect edit passed workspace
+verification but failed both scoring checks and exited 1. In all four runs, an unprivileged
+same-user probe received `EPERM` for both `PTRACE_ATTACH` and `process_vm_readv` against the
+evaluator and each scoring child. A scope 0 control attached successfully to a sacrificial
+process, and the guest powered down after all assertions passed. The host remained at scope 0.
+The guest contained byte-identical copies of the 98 tracked runtime files under `eval/`,
+`lib/`, `src/`, and `package.json` from `ff55a2c` plus the current runtime edits. Their
+SHA-256 over sorted records (`path`, NUL, raw 32-byte file digest) is
+`2743c680fd6ad6549d9dfb2ae550585de756a0106cf6aebd1df01b24d9a2869c`.
+Harness and serial log are retained in this chat's `work/yama-vm/` directory. This is
+implementer verification. The independent tracing verdict is recorded above.
+
+**2026-11-04 scoring tracing mitigation submitted.** The provider evaluation CLI and API
+require an untraced evaluator and Linux Yama `kernel.yama.ptrace_scope=2` or `3` before
+starting a run and before returning a report. Scope 1 still permits ancestor tracing.
+On this host at scope 0 the real CLI exited with an error, made zero provider requests,
+and wrote no report. Integration tests use simulated policy reads for the protected path
+while running the real workspace sandbox and scoring code. The mitigation assumes a trusted administrator,
+runtime and checkout. It changes no host settings and does not accept the provider phase.
+
+**2026-11-04 provider evaluator follow-up: PARTIAL, scoring security still open.**
+The fixed evaluation fixture now runs its `node --test` command using the evaluator's
+Node executable directly instead of relying on an externally installed npm inside the
+sandbox. The focused provider-evaluation/process suite passed 43/43 with the official
+Node 22.23.1 tarball and its npm first on PATH. This is a submitted portability repair,
+not acceptance of the provider phase. A separate host-side ptrace probe on this Linux
+host (`ptrace_scope=0`) successfully attached to an authoritative Node scoring process
+even when that process was experimentally placed in a Bubblewrap user/PID namespace.
+That experiment was not kept as a security fix: Bubblewrap alone did not prevent this
+same-UID attack. The scoring-forgery finding remains open and independent review is
+required for any further repair.
+
+**2026-11-04 durable phase started at the owner's direction.** DUR-001 lock and
+contract investigation was started in `/home/mitravanu/matrix` on base `ff55a2c` and
+is now submitted for review.
+The first cross-process lock spike and its limits are recorded in
+[DUR-001](decisions/DUR-001.md). PRV-107 is not accepted; the independent
+[provider evaluation review](reports/2026-11-04-prv106-independent-review.md)
+records the same-UID scoring forgery residual and missing Node 22 evidence. Starting
+durability work does not resolve or waive those findings. No DUR-001 interface or
+lock design is accepted, and dependent implementation remains gated on that review.
+
+**2026-11-03 PRV-106 Mode B independent audit: no findings within the tested
+scope.** Executed by a fresh-context auditor per [PRV106_AUDIT.md](PRV106_AUDIT.md)
+with the chief-dispatched Mode B: the repaired in-flight candidate was
+snapshot-captured and audited under that fingerprint only, and the snapshot later
+proved 8/8 byte-identical to the committed candidate `ff55a2c`, so the audit binds
+exactly to this commit. Four P3 advisories carry repair directions (decorative
+`checks.target` excluded from `taskSuccess`; behavioral gate reuses the
+authoritative fixture vectors, so an overfit proposal passes both gates;
+`checks.edit` conflates byte binding with the `authoritativeOk` scores; the
+invoker binding name is discoverable in agent context); three attack forms remain
+explicitly unverified. Documented boundary retained: with `ptrace_scope=0`, a
+same-uid process still discloses receipt tokens from the host-spawned
+result-phase scoring children (`eval/provider-eval.mjs:600-604`) and forges
+passing TAP plus a substituted `exit_group(0)`, while the sandboxed agent-side
+gate keeps `taskSuccess`/`report.ok` false for wrong bytes; the report records a
+repair direction (route result-phase spawns through the same bubblewrap snapshot
+runner) rather than a finding. Controls discriminated; Mode B alternate
+counterexamples were self-designed and demonstrated; snapshot regression 43/43 on
+Node v24.21.0 (Node 22 absent on this host, a named gap, so evidence is
+single-version). Harness cleanup verified, with one disclosed read-only deviation
+errata (a single unprovenance pid leak scan, no writes, no side effects). This
+audit closes only the P2 "independent adversarial evidence" cell for the evaluator
+scoring boundary; it decides no PRV-105 or PRV-106 acceptance; the ptrace residual
+and the P3 dispositions are chief decision points. See
+[the PRV-106 audit](reports/2026-11-02-prv106-audit.md).
+
 **2026-11-02 workspace-test isolation submitted.** Provider evaluation probes the
 Linux Bubblewrap backend before contacting the provider and runs agent workspace
 tests against a disposable snapshot in separate user, PID and network namespaces.
@@ -215,8 +554,8 @@ provider evaluation is now delivered and SUBMITTED (see its section below). Its 
 recheck then reproduced a package.json test-script substitution; the evaluator now denies every
 non-source edit, protects the fixture/package bytes and scores against an independent run of the
 original fixture (see the package/test-runner repair below). The phase is **not complete and not
-accepted**: independent re-review of that repair, the adversarial audit and the release decision
-remain open.
+accepted**: independent re-review of that repair and the release decision remain open. The
+durable-phase adversarial audit (QA-101) was accepted on 2026-11-09.
 
 States: READY → CLAIMED → IMPLEMENTING → SUBMITTED → ACCEPTED.
 Use CHANGES REQUIRED after review, BLOCKED for an unresolved prerequisite and DEFERRED
@@ -224,29 +563,32 @@ for later phases. Only the chief records ACCEPTED against exact candidate eviden
 
 ## Active provider phase
 
-| Task    | Status    | Owner / checkout                                         | Prerequisite / next action                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Evidence / verdict                                                                                                                                                                                                                                                                                                                                                            |
-| ------- | --------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| PRV-101 | SUBMITTED | Chief/contracts implementer, `/home/mitravanu/matrix`    | R2/R4/RR1/RR3 repaired 2026-11-01; independent re-review required                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | 16 config tests; repaired-candidate gate below                                                                                                                                                                                                                                                                                                                                |
-| PRV-102 | SUBMITTED | Chief/transport implementer, owner-directed exception    | R3/R5 repaired 2026-11-01; PRV-101 still not independently accepted                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | 14 transport + 20 legacy tests; repaired-candidate gate below                                                                                                                                                                                                                                                                                                                 |
-| PRV-103 | SUBMITTED | Chief/catalog implementer, owner-directed exception      | R3/RR3/D1/D2 and check-4 timeout repaired 2026-11-01                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | 16 catalog tests; repaired-candidate gate below                                                                                                                                                                                                                                                                                                                               |
-| PRV-104 | PARTIAL   | Chief/integration implementer                            | Picker, exact target, session binding, explicit built-in routing, TTY `--provider` preset, exact-ID entry and `providers test` delivered 2026-11-01; picker/resume and probe review defects repaired; probe hostile-stream cases added                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Picker/app/session/probe/CLI regressions; 719-test gate; re-review required                                                                                                                                                                                                                                                                                                   |
-| PRV-105 | SUBMITTED | Compatibility/eval implementer, `/home/mitravanu/matrix` | Opt-in evaluation delivered 2026-11-02; package/test-runner integrity & VM constructor escape repaired; re-review found CHANGES REQUIRED (P1) on assertion/serialization authority; host-shim repair submitted, then a follow-up candidate-binding bypass was repaired; adversarial review then found and repaired a FIFO fixture-tamper bypass; repair committed as `094642a`; an initial partial review on that clean candidate passed but is not acceptance; an implementer-side e2e counterexample sweep held the boundary but is not audit-independent; a same-session assigned integrity review then returned CHANGES REQUIRED on file binding and same-uid ptrace receipt forgery (score gates lifted, workspace gate not); PRV-102/103/104 still SUBMITTED/PARTIAL | 22 provider-eval tests; package-script denial, VM escape, assert-patch, `toJSON`, candidate-binding, fixture-tamper and audit-leak regressions; [binding and fixture-tamper repair](reports/2026-11-02-eval-candidate-binding-repair.md); [e2e sweep](reports/2026-11-02-eval-scoring-e2e-review.md); [integrity review](reports/2026-11-02-eval-scoring-integrity-review.md) |
-| PRV-106 | BLOCKED   | Unassigned                                               | P0 for fixture preparation; integrated candidate for audit                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | None                                                                                                                                                                                                                                                                                                                                                                          |
-| PRV-107 | BLOCKED   | Chief role; no active implementation reservation         | Submitted PRV-101–106 evidence; independent review and P3                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | None                                                                                                                                                                                                                                                                                                                                                                          |
+| Task                                                                            | Status                                                                                                                                                                                                                                                                                                                                                                                                                             | Owner / checkout                                         | Prerequisite / next action                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Evidence / verdict                                                                                                                                                                                                                                                                    |
+| ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PRV-101                                                                         | SUBMITTED                                                                                                                                                                                                                                                                                                                                                                                                                          | Chief/contracts implementer, `/home/mitravanu/matrix`    | R2/R4/RR1/RR3 repaired 2026-11-01; independent re-review required                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 16 config tests; repaired-candidate gate below                                                                                                                                                                                                                                        |
+| PRV-102                                                                         | SUBMITTED                                                                                                                                                                                                                                                                                                                                                                                                                          | Chief/transport implementer, owner-directed exception    | R3/R5 repaired 2026-11-01; PRV-101 still not independently accepted                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | 14 transport + 20 legacy tests; repaired-candidate gate below                                                                                                                                                                                                                         |
+| PRV-103                                                                         | SUBMITTED                                                                                                                                                                                                                                                                                                                                                                                                                          | Chief/catalog implementer, owner-directed exception      | R3/RR3/D1/D2 and check-4 timeout repaired 2026-11-01                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 16 catalog tests; repaired-candidate gate below                                                                                                                                                                                                                                       |
+| PRV-104                                                                         | PARTIAL                                                                                                                                                                                                                                                                                                                                                                                                                            | Chief/integration implementer                            | Picker, exact target, session binding, explicit built-in routing, TTY `--provider` preset, exact-ID entry and `providers test` delivered 2026-11-01; picker/resume and probe review defects repaired; probe hostile-stream cases added                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Picker/app/session/probe/CLI regressions; 719-test gate; re-review required                                                                                                                                                                                                           |
+| PRV-105                                                                         | SUBMITTED                                                                                                                                                                                                                                                                                                                                                                                                                          | Compatibility/eval implementer, `/home/mitravanu/matrix` | Opt-in evaluation delivered 2026-11-02; package/test-runner integrity & VM constructor escape repaired; re-review found CHANGES REQUIRED (P1) on assertion/serialization authority; host-shim repair submitted, then a follow-up candidate-binding bypass was repaired; adversarial review then found and repaired a FIFO fixture-tamper bypass; repair committed as `094642a`; an initial partial review on that clean candidate passed but is not acceptance; an implementer-side e2e counterexample sweep held the boundary but is not audit-independent; a same-session assigned integrity review then returned CHANGES REQUIRED on file binding and same-uid ptrace receipt forgery (score gates lifted, workspace gate not); at |
+| `ff55a2c` the PRV-106 Mode B audit returned no findings within tested scope (4x |
+| P3 advisories, ptrace result-phase residual documented, fingerprint-bound);     |
+| chief acceptance outstanding; PRV-102/103/104 still SUBMITTED/PARTIAL           | 22 provider-eval tests; package-script denial, VM escape, assert-patch, `toJSON`, candidate-binding, fixture-tamper and audit-leak regressions; [binding and fixture-tamper repair](reports/2026-11-02-eval-candidate-binding-repair.md); [e2e sweep](reports/2026-11-02-eval-scoring-e2e-review.md); [integrity review](reports/2026-11-02-eval-scoring-integrity-review.md); [PRV-106 audit](reports/2026-11-02-prv106-audit.md) |
+| PRV-106                                                                         | SUBMITTED                                                                                                                                                                                                                                                                                                                                                                                                                          | Independent fresh-context audit agent                    | Chief dispositions the 4x P3 advisories and the documented ptrace result-phase residual; Node-22 regression half remains a named single-host gap; full engineering gates stay chief-level (756/756 recorded in the `ff55a2c` commit message); PRV-107 next                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Mode B audit bound to `ff55a2c` by an 8/8 fingerprint match: [report](reports/2026-11-02-prv106-audit.md); verdict no findings within tested scope; loopback-only e2e cells and isolation families with discriminating controls; loot/kits retained under `/tmp/opencode/prv106-kit/` |
+| PRV-107                                                                         | ACCEPTED                                                                                                                                                                                                                                                                                                                                                                                                                           | Chief integration                                        | Provider matrix complete. Evaluator advisories tracked above.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | [Consolidated acceptance report](reports/2026-11-04-prv107-provider-acceptance.md), 24/24 cases and Node 22/24 gates                                                                                                                                                                  |
 
-## Deferred durable phase
+## Durable phase
 
-| Task     | Status   | Owner      | Release condition                                                |
-| -------- | -------- | ---------- | ---------------------------------------------------------------- |
-| DUR-001  | DEFERRED | Unassigned | PRV-107 accepted; chief releases durable phase                   |
-| EVAL-101 | DEFERRED | Unassigned | PRV-107 accepted; capability protocol uses new provider identity |
-| DUR-002  | DEFERRED | Unassigned | Durable phase released; accepted DUR-001                         |
-| DUR-003  | DEFERRED | Unassigned | Durable phase released; accepted DUR-001; integrates DUR-002     |
-| DUR-004  | DEFERRED | Unassigned | Accepted DUR-001/002/003                                         |
-| DUR-005  | DEFERRED | Unassigned | Accepted DUR-001/002/003; shared-file handoff with DUR-004       |
-| DUR-006  | DEFERRED | Unassigned | Accepted DUR-004/005 interface                                   |
-| QA-101   | DEFERRED | Unassigned | DUR-001 contracts; integrated durable runtime for final audit    |
-| INT-101  | DEFERRED | Chief role | Durable implementations and independent QA evidence              |
+| Task     | Status   | Owner                | Release condition                                                                                                                                                           |
+| -------- | -------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DUR-001  | ACCEPTED | Chief integration    | Independent re-review matched the five-file candidate fingerprint                                                                                                           |
+| EVAL-101 | DEFERRED | Unassigned           | PRV-107 accepted; capability protocol uses new provider identity                                                                                                            |
+| DUR-002  | ACCEPTED | Chief integration    | Independent review and Node 22/24 checks passed on `70e88900fe77`                                                                                                           |
+| DUR-003  | ACCEPTED | Recovery implementer | Independent review accepted b243209f0299 on base ff55a2c                                                                                                                    |
+| DUR-004  | ACCEPTED | Executor implementer | Independent review of `bc78ec7f`; DUR-005 owns attestation/reclaim and controller integration                                                                               |
+| DUR-005  | ACCEPTED | Chief integration    | C1 test repair accepted at `10d99cb02543`; 1,033/1,033 on Node 22/24. [Closure](reports/2026-11-09-int101-integration.md#12-chief-closure-2026-11-10)                       |
+| DUR-006  | ACCEPTED | CLI/UI implementer   | Independent ACCEPT of `da9d9d752d0c` (Finding R1); 1,032/1,032 evidence reused; [report](reports/2026-11-08-dur006-r1-re-review.md)                                         |
+| QA-101   | ACCEPTED | Independent QA role  | Adversarial matrix 18 PASS / 2 PARTIAL (57 PASS / 2 NOT EVALUATED); [review](reports/2026-11-09-qa101-acceptance-review.md)                                                 |
+| INT-101  | ACCEPTED | Chief role           | C1–C4 closed on integrated `dfa62616fa86`. Local gates passed, hosted CI NOT EVALUATED. [Disposition](reports/2026-11-09-int101-integration.md#12-chief-closure-2026-11-10) |
 
 Preserved durable contracts/tasks are in [DURABLE_PHASE.md](DURABLE_PHASE.md),
 [ARCHITECTURE.md](ARCHITECTURE.md) and [AGENT_TASKS.md](AGENT_TASKS.md). Their internal

@@ -276,6 +276,34 @@ function authoritativeTestSource(source, completionToken, behavioral) {
   );
 }
 
+async function runIsolatedTest(sandbox, workspace, options) {
+  const snapshot = createWorkspaceSnapshot(workspace, { signal: options.signal });
+  let result;
+  let cleanup;
+  try {
+    result = await sandbox.execute(
+      {
+        workspace: snapshot.sourceRoot,
+        cwd: snapshot.sourceRoot,
+        executable: options.file,
+        argv: options.args,
+        command: options.display,
+      },
+      snapshot,
+      {
+        timeoutMs: options.timeoutMs,
+        signal: options.signal,
+        onLine: options.onLine,
+      },
+    );
+  } finally {
+    cleanup = cleanupWorkspaceSnapshot(snapshot);
+  }
+  if (!cleanup.ok || result.unavailable)
+    throw new Error("isolated test execution or cleanup failed");
+  return result;
+}
+
 export async function runAuthoritativeVerification(
   root,
   source,
@@ -430,6 +458,26 @@ export async function requireProviderEvalSandbox(sandbox) {
   }
 }
 
+function requireProviderEvalTracingProtection() {
+  let scope;
+  let status;
+  if (process.platform === "linux") {
+    try {
+      scope = readFileSync("/proc/sys/kernel/yama/ptrace_scope", "utf8").trim();
+      status = readFileSync("/proc/self/status", "utf8");
+    } catch {
+      // Missing or unreadable kernel evidence cannot authorize scoring.
+    }
+  }
+  // Scope 1 still allows tracing by same-user ancestors. The evaluator and
+  // its scoring children must be protected from unprivileged attach.
+  if ((scope !== "2" && scope !== "3") || !/^TracerPid:[ \t]*0[ \t]*$/m.test(status ?? "")) {
+    throw new Error(
+      "provider evaluation requires Linux Yama kernel.yama.ptrace_scope=2 or 3 and an untraced evaluator",
+    );
+  }
+}
+
 /**
  * Run one explicit provider/model through the real controller on a temporary
  * fixture. Preflight failures (unknown provider, missing key, Local Forge)
@@ -472,8 +520,10 @@ export async function runProviderEvaluation({
   }
   const binding = bindProviderTarget(target, env);
   if (!binding.ok) throw new Error(binding.error);
+  requireProviderEvalTracingProtection();
   const sandbox = createLinuxBwrapBackend();
   await requireProviderEvalSandbox(sandbox);
+  requireProviderEvalTracingProtection();
   if (signal?.aborted) throw new Error("provider evaluation aborted");
   const secret = binding.credential;
   const endpoint = binding.endpoint;
@@ -535,10 +585,20 @@ export async function runProviderEvaluation({
     abortRun = () => controller?.abort();
     signal?.addEventListener("abort", abortRun, { once: true });
     if (signal?.aborted) throw new Error("provider evaluation aborted");
+    const project = detectProject(workspace);
+    // The fixture's complete npm script is `node --test`. Use the exact
+    // current runtime directly, avoiding npm's external installation tree.
+    project.test = {
+      file: process.execPath,
+      args: ["--test"],
+      cwd: workspace,
+      framework: "node --test",
+      display: "node --test (provider evaluation fixture)",
+    };
     outcome = await withWatchdog(
       controller.start({
         task: TASK,
-        project: detectProject(workspace),
+        project,
         model: pickerModelFromTarget(target),
         providerTarget: target,
         providerBinding: binding,
@@ -549,37 +609,7 @@ export async function runProviderEvaluation({
           TMPDIR: controllerHome,
           NO_COLOR: "1",
         },
-        testProcessRunner: async (options) => {
-          // The fixed evaluation task only runs its own detected test plan.
-          // Copy it before starting any workspace code; the namespace has no
-          // host process visibility or network and all writes are disposable.
-          const snapshot = createWorkspaceSnapshot(workspace, { signal: options.signal });
-          let run;
-          let cleanup;
-          try {
-            run = await sandbox.execute(
-              {
-                workspace: snapshot.sourceRoot,
-                cwd: snapshot.sourceRoot,
-                executable: options.file,
-                argv: options.args,
-                command: options.display,
-              },
-              snapshot,
-              {
-                timeoutMs: options.timeoutMs,
-                signal: options.signal,
-                onLine: options.onLine,
-              },
-            );
-          } finally {
-            cleanup = cleanupWorkspaceSnapshot(snapshot);
-          }
-          if (!cleanup.ok || run.unavailable) {
-            throw new Error("isolated provider test execution or cleanup failed");
-          }
-          return run;
-        },
+        testProcessRunner: (options) => runIsolatedTest(sandbox, workspace, options),
         autoApprove: false,
       }),
       controller,
@@ -597,7 +627,9 @@ export async function runProviderEvaluation({
     }
     finalState.testSource = readWorkspaceFile(workspace, TEST_PATH);
     finalState.packageSource = readWorkspaceFile(workspace, PACKAGE_PATH);
-    authoritative = await runAuthoritativeVerification(root, finalState.source, { signal });
+    authoritative = await runAuthoritativeVerification(root, finalState.source, {
+      signal,
+    });
     behavioral = await runAuthoritativeVerification(root, finalState.source, {
       signal,
       behavioral: true,
@@ -733,6 +765,7 @@ export async function runProviderEvaluation({
     ok: false,
   };
   report.ok = report.outcome.ok && report.taskSuccess && report.cleanup.rootRemoved;
+  requireProviderEvalTracingProtection();
   return report;
 }
 
@@ -809,6 +842,7 @@ function usage() {
 Runs one explicit opt-in coding task through the real controller against the
 selected provider/model. The workspace is temporary and auto-approved; no
 repository contents are sent. Default \`npm run eval\` remains offline.
+Requires Linux Bubblewrap and kernel.yama.ptrace_scope=2 or 3.
 `;
 }
 

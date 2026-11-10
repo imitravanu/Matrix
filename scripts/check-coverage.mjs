@@ -4,6 +4,18 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const root = fileURLToPath(new URL("..", import.meta.url));
 
 export const COVERAGE_THRESHOLDS = Object.freeze({
+  "lib/goal-contracts.mjs": { line: 90, branch: 75, functions: 100 },
+  "lib/goal-policy.mjs": { line: 65, branch: 55, functions: 80 },
+  "lib/goal-containment.mjs": { line: 80, branch: 55, functions: 80 },
+  "lib/goal-guardian.mjs": { line: 70, branch: 25, functions: 60 },
+  "lib/goal-lease-probe.mjs": { line: 85, branch: 65, functions: 90 },
+  "lib/goal-executor.mjs": { line: 85, branch: 75, functions: 90 },
+  "lib/goal-store.mjs": { line: 85, branch: 70, functions: 90 },
+  "lib/goal-recovery.mjs": { line: 80, branch: 75, functions: 95 },
+  "lib/goal-operations.mjs": { line: 90, branch: 75, functions: 95 },
+  "lib/goal-budget.mjs": { line: 85, branch: 75, functions: 90 },
+  "lib/goal-context.mjs": { line: 90, branch: 75, functions: 95 },
+  "lib/goal-lock.mjs": { line: 90, branch: 70, functions: 95 },
   "lib/command-policy.mjs": { line: 90, branch: 80, functions: 100 },
   "lib/command-execution.mjs": { line: 90, branch: 85, functions: 100 },
   "lib/linux-bwrap.mjs": { line: 80, branch: 65, functions: 90 },

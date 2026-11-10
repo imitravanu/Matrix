@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { createServer } from "node:http";
-import {
+import fs, {
   existsSync,
   mkdirSync,
   readdirSync,
@@ -11,6 +11,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 
 import {
@@ -25,7 +26,34 @@ import {
 import { addProviderProfile } from "../lib/provider-config.mjs";
 import { PACKAGE_ROOT, makeTempDir } from "./helpers.mjs";
 
-const sandboxTest = process.platform === "linux" ? test : test.skip;
+const tracingScopePath = "/proc/sys/kernel/yama/ptrace_scope";
+
+// Exercise the real controller and Bubblewrap on developer hosts that do not
+// enforce Yama. Only this test process simulates the kernel policy read.
+async function withTracingScope(t, scope, run, status = "TracerPid:\t0\n") {
+  const read = fs.readFileSync;
+  const mock = t.mock.method(fs, "readFileSync", (path, ...args) => {
+    if (path === tracingScopePath) {
+      if (scope === null) throw new Error("Yama unavailable");
+      return scope;
+    }
+    if (path === "/proc/self/status") return status;
+    return read(path, ...args);
+  });
+  syncBuiltinESMExports();
+  try {
+    await run();
+  } finally {
+    mock.mock.restore();
+    syncBuiltinESMExports();
+  }
+}
+
+function sandboxTest(name, run) {
+  test(name, { skip: process.platform !== "linux" }, (t) =>
+    withTracingScope(t, "2\n", () => run(t)),
+  );
+}
 
 const MODEL = "vendor/eval-model:latest";
 const KEY = "sk-provider-eval-canary";
@@ -286,6 +314,7 @@ function withKey(t, value = KEY) {
 
 sandboxTest("an explicit provider/model edit run applies the patch and verifies it", async (t) => {
   const home = sandbox(t);
+  const verificationCommands = [];
   const server = await startServer((req, res, record) => {
     const body = JSON.parse(record.body);
     const followUp = body.messages.some((message) => message.role === "tool");
@@ -303,6 +332,9 @@ sandboxTest("an explicit provider/model edit run applies the patch and verifies 
     providerId: "lab",
     modelId: MODEL,
     env: process.env,
+    onEvent(event) {
+      if (event.type === "verify:start") verificationCommands.push(event.command);
+    },
   });
 
   assert.equal(report.evidenceClass, PROVIDER_EVAL_EVIDENCE_CLASS);
@@ -315,6 +347,7 @@ sandboxTest("an explicit provider/model edit run applies the patch and verifies 
   assert.equal(report.outcome.status, "success");
   assert.equal(report.outcome.ok, true);
   assert.equal(report.verification.ok, true);
+  assert.deepEqual(verificationCommands, ["node --test (provider evaluation fixture)"]);
   assert.equal(report.authoritativeVerification.ok, true);
   assert.equal(report.authoritativeVerification.passed, 1);
   assert.equal(report.authoritativeVerification.failed, 0);
@@ -663,46 +696,100 @@ function runProviderEvalCli(args, { home, env = {} } = {}) {
   });
 }
 
-sandboxTest("the provider eval CLI runs one explicit target and writes its report", async (t) => {
-  const home = sandbox(t);
-  const server = await startServer((req, res, record) => {
-    const body = JSON.parse(record.body);
-    const followUp = body.messages.some((message) => message.role === "tool");
-    sse(
-      res,
-      followUp ? contentEvents("Fixed keepLast and verified the test.") : proposeEditEvents(),
-    );
-  });
-  t.after(() => server.close());
-  await setup(home, server.baseUrl);
+test(
+  "the provider eval CLI enforces the real host policy before writing a report",
+  { skip: process.platform !== "linux" },
+  async (t) => {
+    const home = sandbox(t);
+    const server = await startServer((req, res, record) => {
+      const body = JSON.parse(record.body);
+      const followUp = body.messages.some((message) => message.role === "tool");
+      sse(
+        res,
+        followUp ? contentEvents("Fixed keepLast and verified the test.") : proposeEditEvents(),
+      );
+    });
+    t.after(() => server.close());
+    await setup(home, server.baseUrl);
 
-  const reports = join(home, "reports");
-  const reportPath = join(reports, "provider.json");
-  const textPath = join(reports, "provider.txt");
+    const reports = join(home, "reports");
+    const reportPath = join(reports, "provider.json");
+    const textPath = join(reports, "provider.txt");
 
-  const cli = await runProviderEvalCli(["--provider", "lab", "--model", MODEL], {
-    home,
-    env: { LAB_API_KEY: KEY, MATRIX_PROVIDER_EVAL_REPORTS: reports },
-  });
-  assert.equal(cli.status, 0, cli.stderr);
-  assert.match(cli.stdout, /PROVIDER EVAL · lab\//);
-  assert.match(cli.stdout, /taskSuccess yes/);
-  assert.match(cli.stdout, /Overall: PASS/);
-  assert.match(cli.stdout, /report .*provider\.json/);
-  assert.equal(cli.stderr.includes(KEY), false);
-  assert.equal(cli.stdout.includes(KEY), false);
+    const cli = await runProviderEvalCli(["--provider", "lab", "--model", MODEL], {
+      home,
+      env: { LAB_API_KEY: KEY, MATRIX_PROVIDER_EVAL_REPORTS: reports },
+    });
+    let protectedHost = false;
+    try {
+      protectedHost = /^[23]$/.test(readFileSync(tracingScopePath, "utf8").trim());
+    } catch {
+      // Missing Yama must be refused as well.
+    }
+    if (!protectedHost) {
+      assert.equal(cli.status, 1);
+      assert.match(cli.stderr, /requires Linux Yama kernel\.yama\.ptrace_scope=2 or 3/);
+      assert.equal(server.requests.length, 0);
+      assert.equal(existsSync(reports), false);
+      return;
+    }
+    assert.equal(cli.status, 0, cli.stderr);
+    assert.match(cli.stdout, /PROVIDER EVAL · lab\//);
+    assert.match(cli.stdout, /taskSuccess yes/);
+    assert.match(cli.stdout, /Overall: PASS/);
+    assert.match(cli.stdout, /report .*provider\.json/);
+    assert.equal(cli.stderr.includes(KEY), false);
+    assert.equal(cli.stdout.includes(KEY), false);
 
-  const report = JSON.parse(readFileSync(reportPath, "utf8"));
-  const text = readFileSync(textPath, "utf8");
-  assert.match(text, /Overall: PASS/);
-  assert.equal(text.includes(KEY), false);
-  assert.equal(text.includes("/tmp/matrix-provider-eval-"), false);
-  assert.equal(report.ok, true);
-  assert.equal(report.provider.id, "lab");
-  assert.equal(report.taskRevision, PROVIDER_EVAL_TASK_REVISION);
-  assert.equal(report.cleanup.rootRemoved, true);
-  assert.equal(readFileSync(reportPath, "utf8").includes(KEY), false);
-});
+    const report = JSON.parse(readFileSync(reportPath, "utf8"));
+    const text = readFileSync(textPath, "utf8");
+    assert.match(text, /Overall: PASS/);
+    assert.equal(text.includes(KEY), false);
+    assert.equal(text.includes("/tmp/matrix-provider-eval-"), false);
+    assert.equal(report.ok, true);
+    assert.equal(report.provider.id, "lab");
+    assert.equal(report.taskRevision, PROVIDER_EVAL_TASK_REVISION);
+    assert.equal(report.cleanup.rootRemoved, true);
+    assert.equal(readFileSync(reportPath, "utf8").includes(KEY), false);
+  },
+);
+
+test(
+  "provider evaluation rejects unsafe, unknown, or traced host states before any request",
+  { skip: process.platform !== "linux" },
+  async (t) => {
+    const home = sandbox(t);
+    const server = await startServer((req, res) => sse(res, contentEvents("unexpected request")));
+    t.after(() => server.close());
+    await setup(home, server.baseUrl);
+    for (const [scope, status] of [
+      ["0\n", undefined],
+      ["1\n", undefined],
+      [null, undefined],
+      ["invalid\n", undefined],
+      ["2\n", "TracerPid:\t123\n"],
+      ["3\n", "Name:\tnode\n"],
+    ]) {
+      await withTracingScope(
+        t,
+        scope,
+        async () => {
+          await assert.rejects(
+            runProviderEvaluation({
+              home,
+              providerId: "lab",
+              modelId: MODEL,
+              env: { LAB_API_KEY: KEY },
+            }),
+            /requires Linux Yama kernel\.yama\.ptrace_scope=2 or 3/,
+          );
+        },
+        status,
+      );
+    }
+    assert.equal(server.requests.length, 0);
+  },
+);
 
 test("provider eval parsing requires an explicit provider and exact model", () => {
   assert.deepEqual(parseProviderEvalArgs(["--provider", "lab", "--model", MODEL]), {

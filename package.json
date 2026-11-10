@@ -36,6 +36,7 @@
     "coverage": "node scripts/check-coverage.mjs",
     "eval": "node eval/run.mjs",
     "eval:provider": "node eval/provider-eval.mjs",
+    "eval:durability": "node eval/durability/run.mjs",
     "pack:check": "node scripts/check-pack.mjs",
     "check": "npm run syntax && npm run lint && npm run typecheck && npm run format:check && npm run coverage"
   },

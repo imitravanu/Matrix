@@ -1,5 +1,9 @@
 # Matrix next phase: dynamic custom providers first
 
+> PRV-107 is accepted for the reviewed provider candidate. Current work starts with
+> DUR-001 in the [durable execution phase](docs/next-phase/DURABLE_PHASE.md). See the
+> [status board](docs/next-phase/STATUS.md) for the acceptance scope and follow-ups.
+
 Prepared 2026-10-29 against `e1b3c66`. This is an implementation plan; provider support
 specified here has not been implemented or accepted. The owner has prioritized this
 phase so better models can be configured and evaluated before later engineering work.

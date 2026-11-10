@@ -1,7 +1,7 @@
-# Deferred phase: durable engineering tasks
+# Durable engineering tasks
 
-> Deferred until PRV-107 is ACCEPTED. Start with [the active provider phase](../../NEXT_PHASE.md).
-> READY labels below describe readiness within this later phase, not current dispatch authority.
+> Released after PRV-107 acceptance. Start with DUR-001 and see the [status board](STATUS.md)
+> for current dispatch and dependency gates.
 
 Prepared 2026-10-29 against `e1b3c66` (`Harden remote reads and undo recovery`).
 This is an implementation brief, not a claim that the capabilities below exist.

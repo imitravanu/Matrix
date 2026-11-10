@@ -490,6 +490,37 @@ The lint toolchain requires Node 22.13+; local gates run on current Node 22 and 
 
 ## Agent evaluation
 
+The durable-goal contract module `lib/goal-contracts.mjs` validates goal metadata,
+criterion bindings, fenced lifecycle changes and cumulative reservation accounting.
+The store in `lib/goal-store.mjs` persists goal leases, append-only journals,
+checkpoints, exact recovery blobs and budget counters under a private Matrix home
+on Linux. It holds workspace and store locks during commits and reports incomplete
+journal suffixes without replaying them. The storage protocol is recorded in
+`docs/next-phase/decisions/DUR-002.md`.
+
+The goal command adapter in `lib/goal-cli.mjs` validates criteria before
+creation, binds the provider across resumes, and projects durable state for
+JSON and the terminal. `lib/goal-engine.mjs` supplies bounded provider turns
+to the executor. The private Unix control channel in `lib/goal-control.mjs`
+accepts pause and cancel only for the current lease and verified owner
+identity. The goal screen consumes a projection and does not own state or
+dispatch.
+
+On Linux, both approved model-agent write tools use `withWorkspaceWriteLock` to hold
+the canonical workspace lock through final validation, backup and atomic replacement.
+The parent keeps the lock descriptor open until the operation returns or throws.
+
+Durable edit publication pins the target parent and rechecks the committed goal,
+live lease, lock owner and approved file preconditions immediately before rename
+or deletion. The atomic writer's optional commit guard runs after temporary-file
+sync. Exact undo uses that guard to refuse target drift after preflight.
+
+Verified workspace commits sync a transaction manifest before capturing a target.
+Read-only recovery exposes unresolved capture/publication artifacts and blocks
+execution and undo until operator reconciliation. Effect and undo results report
+stable retained paths and cleanup-pending state; callers can pass an effect result
+to the receipt builder to preserve its cleanup uncertainty.
+
 The opt-in provider evaluator executes its workspace tests in a Linux Bubblewrap snapshot and
 requires the sandbox probe to succeed before starting. Test trust and execution audits still cover
 the detected plan. The sandbox isolates workspace processes from host scoring; unrelated hostile

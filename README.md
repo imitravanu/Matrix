@@ -42,6 +42,8 @@ No API key is required for the default Local Forge engine. Remote OpenRouter mod
 - Python 3 and pytest are only required for the bundled demo and its tests. Other workspaces use
   their detected test runner.
 - `git` is optional; branch and dirty-state context is shown when available.
+- On Linux, approved remote-model edits require `flock` and access to Matrix's lock file beside the
+  workspace. If another Matrix process holds the lock, the edit is refused.
 - Optional sandboxed commands require Linux with `bubblewrap` and `prlimit`. Other platforms and failed
   policy probes disable the capability; there is no unsandboxed fallback. AppArmor-restricted Ubuntu
   may need the narrowly scoped `/usr/bin/bwrap` profile; CI loads that profile without changing the
@@ -160,6 +162,24 @@ node bin/matrix.mjs bench --iterations 20
 node bin/matrix.mjs bench --stress --suite transcript --iterations 3
 ```
 
+Durable goals (Linux) keep a resumable, budgeted coding goal outside the workspace in
+`$MATRIX_HOME/goals/`; the ordinary `--resume` session flag is unchanged:
+
+```bash
+node bin/matrix.mjs goal start "Set a to 2" --criteria criteria.json --provider lab --model 'vendor/Model-X:latest' --yes
+node bin/matrix.mjs goal resume <goal-id> [--yes]     # fresh invocation authority; reconciles after a crash
+node bin/matrix.mjs goal pause <goal-id>              # verified owner channel; stops at the next safe boundary
+node bin/matrix.mjs goal cancel <goal-id>             # verified owner channel; terminal
+node bin/matrix.mjs goal list [--json]                # read-only, workspace-scoped
+node bin/matrix.mjs goal inspect <goal-id> [--json]   # read-only status, criteria, budget, last operation
+```
+
+`--criteria` is a bounded JSON file (`{"schemaVersion":1,"criteria":[{"kind":"artifact","path":"src/a.mjs","sha256":"…"}]}`,
+plus `test` plan hashes and `human` review criteria). Every run prints the remaining criteria, remaining
+budget, last durable operation, stop reason and the exact next command; exit codes are 0 (completed or a
+successful read/control command), 1 (incomplete/failed work), 2 (invalid input or refusal) and 130
+(interrupted). `list`/`inspect` never spawn or mutate, and all JSON output is bounded and redacted.
+
 Named providers store the environment-variable name, never the key value; export the value in your
 shell. `providers add` refuses duplicate ids, `providers show` prints one profile with its discovery
 state and current configuration digest, and `providers update` changes only the fields named by its
@@ -240,6 +260,43 @@ command-approval screen and covers the exact workspace, executable, argv, cwd, a
 bytes. It authorizes one invocation only; every second call is denied. `--yes`, edit auto-approval,
 `--allow-tests`, and stored test trust grant no command authority. Headless JSON includes an additive
 `commands` array with process, audit, cleanup, output-truncation, and discarded-write evidence.
+
+## Durable goals
+
+The Linux goal workflow saves criteria, budgets and operation receipts under
+`MATRIX_HOME`. From a workspace, write a criteria file and start a goal:
+
+```sh
+matrix goal start "Rename a to b in src/a.mjs" --criteria criteria.json
+matrix goal list
+matrix goal inspect <goal-id> --json
+matrix goal pause <goal-id>
+matrix goal resume <goal-id>
+matrix goal cancel <goal-id>
+```
+
+Use a JSON object with `schemaVersion: 1` and a `criteria` array. Each criterion
+is an artifact with a relative `path` and expected `sha256`, a `test` bound to
+the detected plan (provide `planHash` to require a particular plan), or a
+`human` criterion with a `description`. For example:
+
+```json
+{
+  "schemaVersion": 1,
+  "criteria": [{ "kind": "artifact", "path": "src/a.mjs", "sha256": "<expected SHA-256>" }]
+}
+```
+
+Start or resume in a terminal to see the saved state and approve exact
+proposals. In unattended runs `--yes` approves edits for that invocation,
+and `--allow-tests` separately approves the bound test plan. Test execution
+requires Bubblewrap and the reviewed pidfd helper. From a source checkout,
+build the helper with `node scripts/build-pidfd-helper.mjs`.
+Resume uses the saved provider and budget. Local Forge is the default.
+To choose an explicit profile on start, add `--provider <id> --model <id>`.
+List and inspect read state without starting an attempt. When the remaining
+criteria require human review, resume in a terminal to record a decision
+against the current tracked evidence. The decision survives a restart.
 
 ## Keys
 
@@ -381,10 +438,10 @@ provider/model/config digest, task revision/digest, per-check status, outcome an
 `eval/reports/provider.json`. The preflighted credential and endpoint are the ones used by
 execution, and the fixture test file must remain byte-identical with no applied edits; a weakened
 test fails the run even if it passes. It is never part of the default eval or its baseline, sends
-no repository contents, requires the Linux Bubblewrap sandbox for workspace tests and refuses to
-run when it is unavailable. The sandbox isolates workspace test processes; it does not protect
-scoring from other hostile processes already running under the same host user. It
-disables shell commands, and claims nothing beyond that one run. No live
+no repository contents, and requires the Linux Bubblewrap sandbox for workspace tests. The
+evaluator also requires an untraced process under Linux Yama `kernel.yama.ptrace_scope=2` or `3`
+before contacting the provider and before returning a verdict. It disables shell commands and
+claims nothing beyond that one run. No live
 provider quality, price, availability, or latency claim is made. `npm audit` remains a separate
 network-dependent check. The test suite uses temporary workspaces and a temporary
 `MATRIX_HOME`; it never intentionally patches the checked-in demo. Tests cover the real Local Forge apply/deny/undo path, resumed-session

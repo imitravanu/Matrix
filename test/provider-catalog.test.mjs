@@ -566,7 +566,10 @@ test("a body read rejected by the deadline is recorded as a failed refresh", asy
     home,
     providerId: "lab",
     env,
-    timeoutMs: 10,
+    // The budget must survive cache synchronization so the deadline lands on
+    // the stalled body read this test targets; 10 ms could expire before the
+    // request started and take the pre-request timeout path instead.
+    timeoutMs: 250,
     fetchImpl: async (url, init) => ({
       ok: true,
       status: 200,

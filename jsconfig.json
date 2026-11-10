@@ -12,6 +12,10 @@
   },
   "files": [
     "lib/contracts.mjs",
+    "lib/goal-contracts.mjs",
+    "lib/goal-operations.mjs",
+    "lib/goal-recovery.mjs",
+    "lib/goal-store.mjs",
     "lib/project.mjs",
     "lib/controller.mjs",
     "lib/model-agent.mjs",

@@ -148,11 +148,15 @@ the shared trusted test path: exact-plan authorization, a minimal allowlisted ch
 with a disposable home, bounded and redacted output, cancellation, trust and execution audits, and
 process-group cleanup on normal exit, timeout and cancellation. The submitted source and completion
 token are never part of argv, the displayed command, or the trust/execution audit. The agent's own
-test run uses a disposable workspace snapshot in the Linux Bubblewrap sandbox, with separate user,
-PID and network namespaces. The evaluator refuses to run if the sandbox probe fails; it never falls
-back to a host test run. The final source must match the last approved, applied edit. Scoring itself
-is not sandboxed from other hostile host processes running as the same user: the boundary isolates
-workspace test code, not pre-existing host malware. Scoring receives an allowlisted environment,
+test run uses the evaluator's own Node executable directly for the fixture's `node --test` script,
+including when Node and npm are installed outside `/usr`. It runs in a disposable workspace
+snapshot in the Linux Bubblewrap sandbox, with separate user, PID and network namespaces. The
+evaluator requires a successful sandbox probe and an untraced Linux process under Yama
+`kernel.yama.ptrace_scope=2` or `3`. It checks tracing protection before sending provider requests
+and again before returning a result. Scope `1` permits tracing by ancestors, so it is insufficient
+for this evaluator. Hosts with weaker or unavailable protection refuse the run. This protects
+against unprivileged tracing and assumes a trusted host administrator, runtime and checkout.
+The final source must match the last approved, applied edit. Scoring receives an allowlisted environment,
 excluding ambient provider credentials regardless of their variable names. Its evidence class is `opt-in-provider`; it is not availability,
 quality, pricing, context-length or latency evidence, and one run is not generalized to another
 model. A fake-provider

@@ -23,6 +23,7 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { parseArgv, HELP_TEXT } from "../lib/cli.mjs";
+import { commandGoal } from "../lib/goal-cli.mjs";
 import { formatParallelSummary } from "../lib/parallel-summary.mjs";
 import { detectProject, readFileSafe } from "../lib/project.mjs";
 import { resolveInside } from "../lib/workspace.mjs";
@@ -105,6 +106,11 @@ const VALUE_OPTION_NAMES = new Set([
   "--bench-iterations",
   "--suite",
   "--allow-command",
+  "--criteria",
+  "--rounds",
+  "--tools",
+  "--requests",
+  "--active-ms",
 ]);
 
 function extractTestTrustFlag(argv) {
@@ -1080,8 +1086,12 @@ export async function main(argv = process.argv.slice(2)) {
     const extracted = extractTestTrustFlag(argv);
     const benchmark = extractBenchmarkFlags(extracted.args);
     options = parseArgv(benchmark.args, { cwd: process.cwd() });
-    if (extracted.allowTests && options.command !== "interactive") {
-      throw new Error("--allow-tests is only valid with an interactive or headless task");
+    if (
+      extracted.allowTests &&
+      options.command !== "interactive" &&
+      !(options.command === "goal" && ["start", "resume"].includes(options.goalAction))
+    ) {
+      throw new Error("--allow-tests is only valid with a task, goal start, or goal resume");
     }
     if ((benchmark.stress || benchmark.suite !== null) && options.command !== "bench") {
       throw new Error("--stress and --suite are only valid with matrix bench");
@@ -1091,7 +1101,8 @@ export async function main(argv = process.argv.slice(2)) {
     options.benchSuite = benchmark.suite;
   } catch (error) {
     process.stderr.write(`matrix: ${error.message}\nTry 'matrix --help' for usage.\n`);
-    process.exitCode = 1;
+    // Frozen goal grammar maps invalid input to exit 2; other parse errors stay 1.
+    process.exitCode = error.exitCode ?? (options?.command === "goal" ? 2 : 1);
     return;
   }
 
@@ -1155,6 +1166,10 @@ export async function main(argv = process.argv.slice(2)) {
       return;
     }
     if (options.command === "providers") return await commandProviders(options);
+    if (options.command === "goal") {
+      process.exitCode = await commandGoal(options, cwd);
+      return;
+    }
     if (options.command === "doctor") return await commandDoctor(options);
     if (options.command === "sessions") return commandSessions(options);
     if (options.command === "vision") return commandVision(options);
@@ -1165,7 +1180,7 @@ export async function main(argv = process.argv.slice(2)) {
     return await commandInteractive(options, cwd);
   } catch (error) {
     process.stderr.write(`matrix: ${error.message}\nTry 'matrix --help' for usage.\n`);
-    process.exitCode = 1;
+    process.exitCode = error.exitCode ?? (options?.command === "goal" ? 2 : 1);
   }
 }
 

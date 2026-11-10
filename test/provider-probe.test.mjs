@@ -784,7 +784,7 @@ test("malformed tool-call ids and oversized arguments fail before the follow-up"
   const home = sandbox(t);
   let mode = "control-id";
   const server = await startServer((req, res) => {
-    const id = mode === "control-id" ? "bad\nid" : "call_bounded";
+    const id = mode === "control-id" ? "bad\nid-canary" : "call_bounded";
     const args = mode === "control-id" ? "{}" : "x".repeat(5_000);
     sse(res, [
       {
@@ -818,7 +818,9 @@ test("malformed tool-call ids and oversized arguments fail before the follow-up"
   assert.equal(control.checks.tools.status, "fail");
   assert.match(control.checks.tools.error, /not a bounded wire id/);
   assert.equal(control.requests, 1);
-  assert.equal(readFileSync(probeStorePath(home, "lab"), "utf8").includes("bad"), false);
+  // The canary is unique; a bare "bad" substring would collide with random
+  // hexadecimal digest characters in the stored JSON.
+  assert.equal(readFileSync(probeStorePath(home, "lab"), "utf8").includes("id-canary"), false);
 
   mode = "oversized-arguments";
   const oversized = await probeProvider({
