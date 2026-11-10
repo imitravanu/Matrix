@@ -14,7 +14,8 @@
 - **Candidate audit report `docs/next-phase/reports/2026-11-08-qa101-durability-audit.md` SHA-256:** `e501164b67616a120f6c3a1c3e0654071db015a7dba9bd9c92e64dd231bcabc6`
 - **Acceptance review report `docs/next-phase/reports/2026-11-09-qa101-acceptance-review.md` SHA-256:** `e4e05fb9373c184f4e1bd6952bd75057fb6d29d33bde974ea4b13ce3e7a3b859`
 - **Chief disposition on 2026-11-10** — **ACCEPTED** for the local durability integration against the candidate in section 12. The C1 repair changes the test oracle.
-- **Release status** — hosted CI remains NOT EVALUATED. Commit, push, tag and publication require separate user authorization.
+- **Hosted CI on 2026-11-10** — **PASSED** on Node 22 and Node 24 in [run 42867616263](https://github.com/imitravanu/Matrix/actions/runs/42867616263) for branch `matrix/int101-hosted-ci` at `46ed6ea`. See section 13.
+- **Release status** — commit and push were authorized and performed; tag, publication and deployment were not, and remain separate decisions. Live capability evaluation remains NOT EVALUATED.
 
 The earlier implementation results in sections 1–5 and 7 describe the original
 integration candidate. The corrected scorecard in section 8 and the final
@@ -527,3 +528,257 @@ The local durability milestone is complete. Hosted CI remains NOT EVALUATED,
 live capability improvement remains NOT EVALUATED, and release actions require
 separate authorization. Historical independent reports retain the candidate
 identities they originally reviewed.
+
+---
+
+## 13. Hosted CI verification (2026-11-10)
+
+This section records the hosted verification that section 12 left NOT EVALUATED.
+It is an integrator record, not a new acceptance decision: the chief's
+acceptance in section 12 still stands, and no release action was taken.
+
+### 13.1 Branch, commits and preserved history
+
+Base commit `ff55a2c2aaeb863e881a5a8d0e112eb78ded0204` is unchanged. No commit
+was rewritten, rebased or dropped, and the `master` and
+`matrix/engineering-hardening` branches still point at their original commits.
+The reviewed work was pushed to the dedicated branch `matrix/int101-hosted-ci`:
+
+| Commit    | Contents                                                                                                                             |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `1ad420e` | The accepted INT-101 integrated candidate, committed byte-exact.                                                                     |
+| `a8fe1c9` | Hosted CI coverage for the durability harness and the required sandbox setup, plus the checkout-portable harness and driver fixture. |
+| `46ed6ea` | The DUR-001 live-writer test's own fake provider credential, repairing the hosted engineering-gate failure.                          |
+
+Final pushed head: `46ed6ea9f4605ae505a7f57105009d548b298884`.
+
+One further commit records this section and the status-board update. It changes
+only `docs/next-phase/reports/2026-11-09-int101-integration.md` and
+`docs/next-phase/STATUS.md`, which are not members of any published manifest,
+so every fingerprint in this report is unaffected by it.
+
+Commit `1ad420e` was verified by extracting its tree with `git archive` into a
+clean directory and recomputing the accepted manifests. It reproduces the
+integrated candidate `dfa62616fa86221aa37601e1c271a9b7fe88e6d3bfc66340e4014a116e973847`,
+the DUR-005 candidate `10d99cb02543adccf7bea8859632f21a0910ba6e8d25493c4fa5bd01f37dc749`,
+the DUR-006 candidate `da9d9d752d0c44b042cb8f608e8b50ca7eaef0498569c0c1870f37dcdecdbce8`,
+the QA-101 harness `e46b7a6f201e807d4f4601d71f0a13ef0ff0701b6901057694b258a35ed92334`
+and the QA-101 audit report `e501164b67616a120f6c3a1c3e0654071db015a7dba9bd9c92e64dd231bcabc6`
+exactly. The accepted candidate is therefore recoverable from the pushed history
+rather than only asserted.
+
+### 13.2 Coverage audit of the hosted workflow
+
+`RELEASE.md` requires a hosted clean-checkout matrix on Node 22 and Node 24.
+The workflow already covered Node 22 and 24, the engineering gate, the
+hostile-provider suite, evaluation, smoke, benchmark smoke, package inspection
+and the dependency audit. It did **not** cover the durability harness, and its
+sandbox setup was missing three prerequisites that the durable phase requires.
+
+| Required coverage                      | Workflow step                               | Before      | After   |
+| -------------------------------------- | ------------------------------------------- | ----------- | ------- |
+| Node 22 and Node 24                    | `test` job matrix                           | present     | present |
+| Engineering gates                      | `npm run check`                             | present     | present |
+| Durability harness                     | `npm run eval:durability`                   | **missing** | added   |
+| Network-free agent evaluation          | `npm run eval`                              | present     | present |
+| Responsive smoke                       | `npm run smoke`                             | present     | present |
+| Package verification                   | `npm run pack:check`                        | present     | present |
+| Real Bubblewrap execution              | goal suite inside `npm run check`           | present     | present |
+| Doctor policy probe (Linux)            | `Require the Doctor policy probe`           | **missing** | added   |
+| Reviewed pidfd ownership helper        | `Build the reviewed pidfd ownership helper` | **missing** | added   |
+| C toolchain for the helper             | `apt-get install build-essential`           | **missing** | added   |
+| Private Matrix home for the goal store | `chmod 700 "$HOME" "$MATRIX_HOME"`          | **missing** | added   |
+
+The added setup steps are prerequisites of the durable phase, not new gates:
+the goal suite and the harness compile `scripts/matrix-pidfd-helper.c`, and the
+goal store refuses any Matrix home that is not exactly mode 0700. The job
+timeout was raised from 20 to 45 minutes so the two full-suite runs, the
+harness and the sandbox setup complete without truncating a mandatory check.
+
+### 13.3 Findings and repairs
+
+**H-1 (P1, blocks hosted CI) — the durability harness and the DUR-005 driver
+fixture were pinned to one checkout path.** `eval/durability/run.mjs` began
+with `const REPO = "/home/mitravanu/matrix"`, and
+`docs/next-phase/fixtures/dur005-driver.mjs` imported its runtime modules from
+the same absolute path. The harness is executed from a clean hosted runner,
+where that path does not exist, and the driver fixture is copied into a
+temporary workspace before it runs, so it cannot resolve the checkout from its
+own location. The harness now resolves the checkout from its own module URL,
+and the driver takes the package root from `DUR005_PACKAGE_ROOT`, which the
+spawning test passes explicitly. Both repairs are path resolution only: no
+production runtime file changed, and the harness still executes the same 20
+adversarial cases.
+
+**H-2 (P1, blocks hosted CI) — the hosted Matrix home was not private.** The
+workflow created the isolated home with `mkdir -p "$HOME" "$MATRIX_HOME"`
+under the runner's umask 022, producing mode 0755. The goal store requires
+mode 0700 and refuses otherwise, so every durable-goal command would fail
+closed in CI with `goal store: state must be private and owned by the current
+user`. This was reproduced locally before the repair: `matrix goal inspect`
+returned that refusal at 0755 and the correct `unknown goal` answer at 0700.
+The workflow now applies `chmod 700` to both directories.
+
+**H-3 (P1, latent hosted CI break) — the C toolchain was an undeclared
+prerequisite.** `test/goal-runtime.test.mjs`, `test/goal-cli-runtime.test.mjs`
+and the durability harness all build the reviewed pidfd helper from source at
+test time, and `scripts/build-pidfd-helper.mjs` compiles with `-Werror`. The
+workflow installed only `bubblewrap util-linux apparmor`, so a runner image
+without a C compiler would have failed the suite with
+`no C compiler produced the helper`. `build-essential` is now installed
+explicitly and the helper is built and probed as its own step, so a missing or
+broken toolchain fails with a clear message instead of a test error.
+
+**H-4 (P1, blocks hosted CI) — the DUR-001 live-writer test needed an ambient
+provider credential.** `test/goal-lock-spike.test.mjs` drove the real model
+agent with a mocked fetch but took its OpenRouter credential from the ambient
+environment. The hosted engineering gate runs with no provider credentials on
+purpose, so the model agent refused to start with `Model run failed: No
+OpenRouter API key found in ~/.matrix/credentials.json or OPENROUTER_API_KEY`
+and the run ended before any proposal was made. The test then failed at
+`normal approval flow was invoked while locked`. It passed locally only
+because the reviewer's machine had a stored credential. The test now patches
+the provider environment to a fake key and points `HOME` at its own temporary
+home, using the existing helper idiom from `test/model-agent.test.mjs` and
+`test/app-interaction.test.mjs`; the mocked fetch never sends the fake key
+anywhere. The assertion was not weakened and no check was skipped.
+
+H-1 and H-4 are confined to the QA harness, a development fixture and a test
+file. **No production runtime file changed.** `test/goal-lock-spike.test.mjs`
+is not a member of the DUR-005, DUR-006 or integrated candidate manifests, so
+H-4 changed no published fingerprint. H-1 changed three non-production files,
+which are summarized in 13.4.
+
+### 13.4 Affected fingerprints
+
+The portability repair changed `docs/next-phase/fixtures/dur005-driver.mjs`,
+`eval/durability/run.mjs` and `test/goal-runtime.test.mjs`. The DUR-006
+14-file candidate and every production runtime file are unchanged.
+
+| Manifest                     | Accepted value                                                     | Value after the portability repair                                 |
+| ---------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| DUR-005 23-file candidate    | `10d99cb02543adccf7bea8859632f21a0910ba6e8d25493c4fa5bd01f37dc749` | `4ecd249ea37b6dd9150caa8942fbf0819e921b17afda8d1ada2b721d0718ee04` |
+| Integrated 39-file candidate | `dfa62616fa86221aa37601e1c271a9b7fe88e6d3bfc66340e4014a116e973847` | `2e7419851e8f26333a2219d4f026092b62968f26fd0538a54a299e00c192676c` |
+| DUR-006 14-file candidate    | `da9d9d752d0c44b042cb8f608e8b50ca7eaef0498569c0c1870f37dcdecdbce8` | unchanged                                                          |
+
+Per-file SHA-256 after the repair:
+
+| File                                         | SHA-256                                                            |
+| -------------------------------------------- | ------------------------------------------------------------------ |
+| `docs/next-phase/fixtures/dur005-driver.mjs` | `1ca7d189d238d6a316d113c0b88d99fffbcc11287b2426db05fe38d6b021fc42` |
+| `eval/durability/run.mjs`                    | `f50eb5d263036e3e3d92d176a27488c1dacf9e91e8f521b256b22effcb9c4e97` |
+| `test/goal-runtime.test.mjs`                 | `f734faed1be2cb67bf582149387953c826b08d0ff032549f8dc54014b87bb44a` |
+
+Because the repaired files are the QA harness, a development fixture and a
+test file, the change does not alter production behavior and does not require
+a new production review. The accepted production candidate remains the one in
+commit `1ad420e`.
+
+### 13.5 Hosted run results
+
+The first hosted attempt failed and was diagnosed and repaired rather than
+retried blindly.
+
+**Run 42864231896** (<https://github.com/imitravanu/Matrix/actions/runs/42864231896>,
+2026-11-10T17:22:15Z, head `a8fe1c9`): both the Node 22 and the Node 24 job
+failed in `Run engineering gate` with one failing test,
+`DUR-001 live writer participation: model agent write path refuses when goal
+lock is held and succeeds when released`, 1,032 of 1,033 tests passing. The
+diagnosis is H-4 above. The new pidfd-helper and Doctor steps passed on both
+runtimes in that run.
+
+**Run 42867616263** (<https://github.com/imitravanu/Matrix/actions/runs/42867616263>,
+run number 11, 2026-11-10T17:42:03Z to 17:47:19Z, head
+`46ed6ea9f4605ae505a7f57105009d548b298884`, event `push`): **success** on both
+runtimes. Every one of the 18 job steps succeeded on Node 22 and Node 24.
+
+| Step                                                                         | Node 22 | Node 24 |
+| ---------------------------------------------------------------------------- | ------- | ------- |
+| Prepare isolated Matrix home (0700)                                          | pass    | pass    |
+| Install sandbox prerequisites (bwrap, util-linux, apparmor, build-essential) | pass    | pass    |
+| Build the reviewed pidfd ownership helper                                    | pass    | pass    |
+| Require the Doctor policy probe                                              | pass    | pass    |
+| Run engineering gate (`npm run check`)                                       | pass    | pass    |
+| Verify internal package contents                                             | pass    | pass    |
+| Audit locked dependencies (`npm audit`)                                      | pass    | pass    |
+| Verify complete suite with hostile provider environment (`npm test`)         | pass    | pass    |
+| Run network-free agent evaluation (`npm run eval`)                           | pass    | pass    |
+| Run durability adversarial harness (`npm run eval:durability`)               | pass    | pass    |
+| Run responsive smoke checks (`npm run smoke`)                                | pass    | pass    |
+| Run local benchmark smoke                                                    | pass    | pass    |
+
+Step detail recorded from the hosted job logs:
+
+| Evidence                | Node 22                                           | Node 24                                           |
+| ----------------------- | ------------------------------------------------- | ------------------------------------------------- |
+| Engineering gate tests  | 1,033 tests, 1,033 pass, 0 fail, 0 skipped        | 1,033 tests, 1,033 pass, 0 fail, 0 skipped        |
+| Coverage summary        | 93.21% lines / 82.97% branches / 94.85% functions | 93.27% lines / 83.18% branches / 94.88% functions |
+| Package dry run         | 109 files                                         | 109 files                                         |
+| `npm audit`             | 0 vulnerabilities                                 | 0 vulnerabilities                                 |
+| Hostile-provider suite  | 1,033 pass                                        | 1,033 pass                                        |
+| Agent evaluation        | 16 cases, 16 contract pass, 0 safety violations   | 16 cases, 16 contract pass, 0 safety violations   |
+| Durability harness      | 20 cases, 20 passed, 0 failed                     | 20 cases, 20 passed, 0 failed                     |
+| Smoke frames            | 32 (4 geometries x 8 screens)                     | 32 (4 geometries x 8 screens)                     |
+| Doctor `goal-ownership` | ok                                                | ok                                                |
+
+The packed tarball byte size differs between the runner (420,429 bytes) and a
+local checkout (419,679 bytes) while the file count (109) and the unpacked
+content size (1,643,455 bytes) are identical; the runner ships npm 12.2.2
+against npm 12.2.0 locally, which changes the archive encoding, not the
+content. A fresh clone of the pushed branch reproduces 109 files and
+1,643,455 unpacked bytes and passes `npm run pack:check`.
+
+### 13.6 Local evidence supporting the hosted run
+
+The four hosted-equivalent local gates were reproduced with the hosted
+environment (isolated 0700 `HOME` and `MATRIX_HOME`, empty `OPENROUTER_API_KEY`,
+`MATRIX_API_KEY`, `OPENAI_API_KEY`, `OLLAMA_API_KEY`, `MATRIX_API_BASE`,
+`OPENAI_BASE_URL` and `OLLAMA_HOST`):
+
+| Gate                                                    | Node 24.21.0               | Node 22.23.1              |
+| ------------------------------------------------------- | -------------------------- | ------------------------- |
+| `npm run check` (hosted environment)                    | 1,033/1,033, exit 0        | 1,033/1,033, exit 0       |
+| `npm test` (hostile provider environment)               | 1,033/1,033, exit 0        | 1,033/1,033, exit 0       |
+| `npm run eval:durability`                               | 20/20, exit 0              | 20/20, exit 0             |
+| `npm run eval`                                          | 16/16, 0 safety violations | reused from the same tree |
+| `npm run smoke`                                         | 32 frames, exit 0          | reused from the same tree |
+| `npm run pack:check`                                    | 109 files, exit 0          | reused from the same tree |
+| `npm audit`                                             | 0 vulnerabilities          | reused from the same tree |
+| `lint`, `typecheck`, `format:check`, `git diff --check` | exit 0                     | exit 0                    |
+
+The durability harness was additionally executed from a relocated checkout
+(`/tmp/opencode/matrix-ci-sim`) to confirm the H-1 repair: 20/20 on Node 24
+and 37/37 in `test/goal-runtime.test.mjs`, which spawns the repaired driver
+fixture.
+
+### 13.7 Remaining blockers
+
+Hosted CI is now EVALUATED and PASSING for this candidate. The following remain
+open and are not resolved by this run:
+
+- **Release actions are still unauthorized.** No tag, no publication, no
+  deployment was performed. `RELEASE.md` remains a checklist with every gate
+  unchecked, and the release decision is separate.
+- **Live provider capability remains NOT EVALUATED.** The hosted run is
+  network-free and uses no real credentials. No live provider availability,
+  model naming, pricing, context limit, tool-call support, latency or response
+  quality claim is made or implied.
+- **The live provider evaluation is still unevaluable on a hosted runner.** It
+  requires Linux Yama `kernel.yama.ptrace_scope=2` or `3` and an untraced
+  evaluator, and it is opt-in and not part of CI.
+- **The 0700 Matrix home is not self-repairing.** `lib/goal-store.mjs` refuses
+  a Matrix home that is not exactly 0700, and `lib/goal-cli.mjs` creates the
+  directory with `mkdirSync(..., { mode: 0o700 })`, which does not change the
+  mode of an existing directory. The hosted workflow therefore has to create
+  the home privately. A production repair belongs to the goal-store boundary
+  and was not made here.
+- **Two accepted follow-ons are unaffected.** The goal test sandbox still binds
+  the live host root read-write without a network namespace
+  (`lib/goal-containment.mjs`), and the production `namespaceMembers` check
+  still matches on inode alone. Both remain open as recorded in section 9.
+- **The C1 conservative production refusal remains a P3 follow-on**, as
+  recorded in section 12.
+
+The local durability milestone and the hosted CI gate are complete for this
+candidate. Live capability evaluation and every release action require separate
+authorization.

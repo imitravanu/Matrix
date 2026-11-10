@@ -1,12 +1,37 @@
 # Next-phase status and dispatch board
 
+**Hosted CI PASSED on 2026-11-10 for branch `matrix/int101-hosted-ci`.** The
+accepted integrated candidate was committed byte-exact as `1ad420e`, which
+reproduces the integrated fingerprint
+`dfa62616fa86221aa37601e1c271a9b7fe88e6d3bfc66340e4014a116e973847` when its
+tree is extracted. Two follow-up commits add the missing hosted CI coverage
+and a checkout-portable durability harness (`a8fe1c9`) and repair the
+DUR-001 live-writer test's dependence on an ambient provider credential
+(`46ed6ea`). The pushed head is `46ed6ea9f4605ae505a7f57105009d548b298884`,
+on base `ff55a2c` with no history rewritten. Hosted
+[run 42867616263](https://github.com/imitravanu/Matrix/actions/runs/42867616263)
+passed on Node 22 and Node 24 with every step green, including the newly
+added durability harness, the Doctor policy probe and the real Bubblewrap
+execution. See [section 13 of the integration report](reports/2026-11-09-int101-integration.md#13-hosted-ci-verification-2026-11-10).
+
+The CI portability repair changed three non-production files, so the DUR-005
+23-file candidate is now
+`4ecd249ea37b6dd9150caa8942fbf0819e921b17afda8d1ada2b721d0718ee04` and the
+39-file integrated candidate is
+`2e7419851e8f26333a2219d4f026092b62968f26fd0538a54a299e00c192676c`. DUR-006
+remains `da9d9d752d0c`, and the accepted QA-101 harness and audit hashes still
+match. Every production runtime file is byte-identical to the accepted
+candidate, and `test/goal-lock-spike.test.mjs` is not a member of any
+published manifest, so its repair changed no fingerprint.
+
 **INT-101 ACCEPTED on 2026-11-10.** The chief closed C1 after reviewing the
 existing namespace test repair and independently checking identity cases and
-SIGKILL recovery. The current DUR-005 23-file candidate is
-`10d99cb02543adccf7bea8859632f21a0910ba6e8d25493c4fa5bd01f37dc749`; only
+SIGKILL recovery. The DUR-005 23-file candidate at the time of that closure
+was `10d99cb02543adccf7bea8859632f21a0910ba6e8d25493c4fa5bd01f37dc749`; only
 `test/goal-runtime.test.mjs` changed from the earlier accepted candidate.
 DUR-006 remains `da9d9d752d0c`, and the accepted QA-101 harness and audit hashes
-still match. The 39-file integrated candidate is `dfa62616fa86221aa37601e1c271a9b7fe88e6d3bfc66340e4014a116e973847`.
+still match. The 39-file integrated candidate at the time of that closure was
+`dfa62616fa86221aa37601e1c271a9b7fe88e6d3bfc66340e4014a116e973847`.
 
 Both full engineering logs show 1,033/1,033 passing tests on Node 22 and Node 24.
 The repair passed 20/20 stress runs. The chief reran the focused namespace and
@@ -14,8 +39,9 @@ SIGKILL tests, the durability harness on both runtimes, eval (16/16), smoke
 (32 frames) and package verification (109 files). C2–C4 report corrections are
 also closed. See the [final chief disposition](reports/2026-11-09-int101-integration.md#12-chief-closure-2026-11-10)
 and [updated DUR-005 submission](submissions/DUR-005.md#november-10-c1-test-oracle-repair).
-Local durability integration is complete. Hosted CI and live capability
-improvement remain NOT EVALUATED. Release actions require separate authorization.
+Local durability integration is complete, and hosted CI is now evaluated and
+passing. Live capability improvement remains NOT EVALUATED. Release actions,
+tags and publication remain unauthorized.
 
 **QA-101 ACCEPTED on 2026-11-09.** The independent acceptance review of the
 durability adversarial audit issued **ACCEPT** in the
@@ -578,17 +604,17 @@ for later phases. Only the chief records ACCEPTED against exact candidate eviden
 
 ## Durable phase
 
-| Task     | Status   | Owner                | Release condition                                                                                                                                                           |
-| -------- | -------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| DUR-001  | ACCEPTED | Chief integration    | Independent re-review matched the five-file candidate fingerprint                                                                                                           |
-| EVAL-101 | DEFERRED | Unassigned           | PRV-107 accepted; capability protocol uses new provider identity                                                                                                            |
-| DUR-002  | ACCEPTED | Chief integration    | Independent review and Node 22/24 checks passed on `70e88900fe77`                                                                                                           |
-| DUR-003  | ACCEPTED | Recovery implementer | Independent review accepted b243209f0299 on base ff55a2c                                                                                                                    |
-| DUR-004  | ACCEPTED | Executor implementer | Independent review of `bc78ec7f`; DUR-005 owns attestation/reclaim and controller integration                                                                               |
-| DUR-005  | ACCEPTED | Chief integration    | C1 test repair accepted at `10d99cb02543`; 1,033/1,033 on Node 22/24. [Closure](reports/2026-11-09-int101-integration.md#12-chief-closure-2026-11-10)                       |
-| DUR-006  | ACCEPTED | CLI/UI implementer   | Independent ACCEPT of `da9d9d752d0c` (Finding R1); 1,032/1,032 evidence reused; [report](reports/2026-11-08-dur006-r1-re-review.md)                                         |
-| QA-101   | ACCEPTED | Independent QA role  | Adversarial matrix 18 PASS / 2 PARTIAL (57 PASS / 2 NOT EVALUATED); [review](reports/2026-11-09-qa101-acceptance-review.md)                                                 |
-| INT-101  | ACCEPTED | Chief role           | C1–C4 closed on integrated `dfa62616fa86`. Local gates passed, hosted CI NOT EVALUATED. [Disposition](reports/2026-11-09-int101-integration.md#12-chief-closure-2026-11-10) |
+| Task     | Status   | Owner                | Release condition                                                                                                                                                                                                                                                                                                                                                                                              |
+| -------- | -------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DUR-001  | ACCEPTED | Chief integration    | Independent re-review matched the five-file candidate fingerprint                                                                                                                                                                                                                                                                                                                                              |
+| EVAL-101 | DEFERRED | Unassigned           | PRV-107 accepted; capability protocol uses new provider identity                                                                                                                                                                                                                                                                                                                                               |
+| DUR-002  | ACCEPTED | Chief integration    | Independent review and Node 22/24 checks passed on `70e88900fe77`                                                                                                                                                                                                                                                                                                                                              |
+| DUR-003  | ACCEPTED | Recovery implementer | Independent review accepted b243209f0299 on base ff55a2c                                                                                                                                                                                                                                                                                                                                                       |
+| DUR-004  | ACCEPTED | Executor implementer | Independent review of `bc78ec7f`; DUR-005 owns attestation/reclaim and controller integration                                                                                                                                                                                                                                                                                                                  |
+| DUR-005  | ACCEPTED | Chief integration    | C1 test repair accepted at `10d99cb02543`; 1,033/1,033 on Node 22/24. [Closure](reports/2026-11-09-int101-integration.md#12-chief-closure-2026-11-10)                                                                                                                                                                                                                                                          |
+| DUR-006  | ACCEPTED | CLI/UI implementer   | Independent ACCEPT of `da9d9d752d0c` (Finding R1); 1,032/1,032 evidence reused; [report](reports/2026-11-08-dur006-r1-re-review.md)                                                                                                                                                                                                                                                                            |
+| QA-101   | ACCEPTED | Independent QA role  | Adversarial matrix 18 PASS / 2 PARTIAL (57 PASS / 2 NOT EVALUATED); [review](reports/2026-11-09-qa101-acceptance-review.md)                                                                                                                                                                                                                                                                                    |
+| INT-101  | ACCEPTED | Chief role           | C1–C4 closed on integrated `dfa62616fa86`. Local gates passed; hosted CI passed on Node 22/24 in [run 42867616263](https://github.com/imitravanu/Matrix/actions/runs/42867616263) for `matrix/int101-hosted-ci` at `46ed6ea`. [Disposition](reports/2026-11-09-int101-integration.md#12-chief-closure-2026-11-10) · [Hosted CI](reports/2026-11-09-int101-integration.md#13-hosted-ci-verification-2026-11-10) |
 
 Preserved durable contracts/tasks are in [DURABLE_PHASE.md](DURABLE_PHASE.md),
 [ARCHITECTURE.md](ARCHITECTURE.md) and [AGENT_TASKS.md](AGENT_TASKS.md). Their internal
