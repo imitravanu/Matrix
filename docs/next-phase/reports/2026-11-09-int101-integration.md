@@ -552,10 +552,15 @@ The reviewed work was pushed to the dedicated branch `matrix/int101-hosted-ci`:
 
 Final pushed head: `46ed6ea9f4605ae505a7f57105009d548b298884`.
 
-One further commit records this section and the status-board update. It changes
-only `docs/next-phase/reports/2026-11-09-int101-integration.md` and
+Commit `203d1fd77cf81ed4b60aca8b3a5235e16abc6e5f` records this section and the
+status-board update. It changes only
+`docs/next-phase/reports/2026-11-09-int101-integration.md` and
 `docs/next-phase/STATUS.md`, which are not members of any published manifest,
-so every fingerprint in this report is unaffected by it.
+so every fingerprint in this report is unaffected by it. It was verified by
+[run 42870057251](https://github.com/imitravanu/Matrix/actions/runs/42870057251)
+(run number 12, 2026-11-10T17:56:32Z to 18:02:51Z), which passed with every
+step green on Node 22 and Node 24, exactly like the run that verified the
+code.
 
 Commit `1ad420e` was verified by extracting its tree with `git archive` into a
 clean directory and recomputing the accepted manifests. It reproduces the

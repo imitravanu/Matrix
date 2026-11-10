@@ -12,7 +12,10 @@ on base `ff55a2c` with no history rewritten. Hosted
 [run 42867616263](https://github.com/imitravanu/Matrix/actions/runs/42867616263)
 passed on Node 22 and Node 24 with every step green, including the newly
 added durability harness, the Doctor policy probe and the real Bubblewrap
-execution. See [section 13 of the integration report](reports/2026-11-09-int101-integration.md#13-hosted-ci-verification-2026-11-10).
+execution. The documentation-only follow-up commit was verified by
+[run 42870057251](https://github.com/imitravanu/Matrix/actions/runs/42870057251),
+which also passed on both runtimes. See
+[section 13 of the integration report](reports/2026-11-09-int101-integration.md#13-hosted-ci-verification-2026-11-10).
 
 The CI portability repair changed three non-production files, so the DUR-005
 23-file candidate is now
