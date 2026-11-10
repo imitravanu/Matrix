@@ -1,7 +1,22 @@
 import { statSync } from "node:fs";
-import { createGoalStore } from "/home/mitravanu/matrix/lib/goal-store.mjs";
-import { createGoalRuntime, createGoalAuthority } from "/home/mitravanu/matrix/lib/goal-policy.mjs";
-import { inspectTestPlan } from "/home/mitravanu/matrix/lib/test-policy.mjs";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+
+// The driver is copied into a temporary workspace before it runs, so it cannot
+// resolve the checkout from its own location. The caller passes the package
+// root explicitly instead of hardcoding one developer's home directory.
+const PACKAGE_ROOT = process.env.DUR005_PACKAGE_ROOT;
+if (!PACKAGE_ROOT) {
+  console.error("DUR005-RESULT " + JSON.stringify({ error: "DUR005_PACKAGE_ROOT is required" }));
+  process.exit(2);
+}
+const moduleUrl = (relative) => pathToFileURL(join(PACKAGE_ROOT, relative)).href;
+
+const { createGoalStore } = await import(moduleUrl("lib/goal-store.mjs"));
+const { createGoalRuntime, createGoalAuthority, reclaimStaleGoalAttempt } = await import(
+  moduleUrl("lib/goal-policy.mjs")
+);
+const { inspectTestPlan } = await import(moduleUrl("lib/test-policy.mjs"));
 
 const home = process.env.DUR005_HOME;
 const workspace = process.env.DUR005_WORKSPACE;
@@ -22,7 +37,6 @@ function loadGoal() {
 
 if (mode === "reclaim") {
   const { goalId } = loadGoal();
-  const { reclaimStaleGoalAttempt } = await import("/home/mitravanu/matrix/lib/goal-policy.mjs");
   const result = reclaimStaleGoalAttempt({ home, goalId, workspace });
   console.log("DUR005-RESULT " + JSON.stringify(result));
   process.exit(0);

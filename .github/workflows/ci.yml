@@ -11,7 +11,7 @@ jobs:
   test:
     name: Node ${{ matrix.node-version }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -32,7 +32,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
       - name: Prepare isolated Matrix home
-        run: mkdir -p "$HOME" "$MATRIX_HOME"
+        run: |
+          mkdir -p "$HOME" "$MATRIX_HOME"
+          # The goal store refuses a Matrix home that is not exactly 0700.
+          chmod 700 "$HOME" "$MATRIX_HOME"
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -47,15 +50,37 @@ jobs:
       - name: Install sandbox prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends bubblewrap util-linux apparmor
+          sudo apt-get install -y --no-install-recommends bubblewrap util-linux apparmor build-essential
           if sudo aa-status >/dev/null 2>&1; then
             printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' 'profile bwrap /usr/bin/bwrap flags=(unconfined) {' '  userns,' '  include if exists <local/bwrap>' '}' | sudo tee /etc/apparmor.d/bwrap >/dev/null
             sudo apparmor_parser -r /etc/apparmor.d/bwrap
           fi
           bwrap --version
           prlimit --version
+          cc --version
       - name: Install npm dependencies
         run: npm ci
+      - name: Build the reviewed pidfd ownership helper
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/build-pidfd-helper.mjs --out "$MATRIX_HOME/bin" 2>&1 | tee "${{ runner.temp }}/matrix-pidfd-helper-node${{ matrix.node-version }}.log"
+      - name: Require the Doctor policy probe
+        shell: bash
+        run: |
+          set -o pipefail
+          node --input-type=module -e "
+            import { runDoctorAsync } from './lib/doctor.mjs';
+            const report = await runDoctorAsync({ cwd: process.cwd(), env: process.env });
+            const wanted = ['goal-ownership', 'linux-sandbox', 'sandbox-policy'];
+            const findings = wanted.map((name) => report.checks.find((check) => check.name === name));
+            console.log(JSON.stringify(findings, null, 2));
+            const failed = findings.filter((check) => !check || check.status !== 'ok');
+            if (failed.length > 0) {
+              console.error('Doctor policy probe did not pass: ' + failed.map((c) => (c ? c.name : 'missing')).join(', '));
+              process.exit(1);
+            }
+          " 2>&1 | tee "${{ runner.temp }}/matrix-doctor-node${{ matrix.node-version }}.log"
       - name: Run engineering gate
         shell: bash
         run: |
@@ -89,6 +114,11 @@ jobs:
         run: |
           set -o pipefail
           npm run eval 2>&1 | tee "${{ runner.temp }}/matrix-eval-node${{ matrix.node-version }}.log"
+      - name: Run durability adversarial harness
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run eval:durability 2>&1 | tee "${{ runner.temp }}/matrix-durability-node${{ matrix.node-version }}.log"
       - name: Run responsive smoke checks
         shell: bash
         run: |
@@ -108,6 +138,9 @@ jobs:
             ${{ runner.temp }}/matrix-check-node${{ matrix.node-version }}.log
             ${{ runner.temp }}/matrix-hostile-node${{ matrix.node-version }}.log
             ${{ runner.temp }}/matrix-eval-node${{ matrix.node-version }}.log
+            ${{ runner.temp }}/matrix-durability-node${{ matrix.node-version }}.log
+            ${{ runner.temp }}/matrix-pidfd-helper-node${{ matrix.node-version }}.log
+            ${{ runner.temp }}/matrix-doctor-node${{ matrix.node-version }}.log
             eval/reports/default.json
             eval/reports/default.txt
             ${{ runner.temp }}/matrix-pack-node${{ matrix.node-version }}.log

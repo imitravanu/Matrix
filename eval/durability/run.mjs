@@ -24,9 +24,12 @@ import fs from "node:fs";
 import { createServer } from "node:http";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const REPO = "/home/mitravanu/matrix";
+// The harness resolves the checkout it exercises from its own location so a
+// clean hosted runner can execute it from any checkout directory.
+const REPO = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const MATRIX = join(REPO, "bin/matrix.mjs");
 
 let activeBases = [];

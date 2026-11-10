@@ -2200,6 +2200,7 @@ test(
       DUR005_HOME: home,
       DUR005_WORKSPACE: workspace,
       DUR005_GOAL_ID: goalId,
+      DUR005_PACKAGE_ROOT: PACKAGE_ROOT,
       DUR005_MODE: "run",
       DUR005_TEST_PLAN: JSON.stringify(testPlan),
       DUR005_TOOL_TIMEOUT_MS: "10000",
