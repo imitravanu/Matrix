@@ -22,39 +22,41 @@ Matrix is built around four constraints:
 
 ## Runtime map
 
-| Area               | File                                                  | Responsibility                                                                                                                                                          |
-| ------------------ | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CLI                | `bin/matrix.mjs`                                      | Interactive, headless, tour, dump, vision, smoke, bench, doctor, sessions.                                                                                              |
-| CLI parser         | `lib/cli.mjs`                                         | Subcommands, flags, validation, help text.                                                                                                                              |
-| Project index      | `lib/project.mjs`                                     | Budgeted workspace walk, language counts, test-runner detection, git context.                                                                                           |
-| Structural parser  | `lib/scope.mjs`                                       | Python indentation scopes; masked JS/TS brace scopes; Rust/Go/Ruby declarations.                                                                                        |
-| Task layer         | `lib/task.mjs`                                        | Intent classification, candidate scoring, grounded search results.                                                                                                      |
-| Local engine       | `lib/local-agent.mjs`                                 | Deterministic inspect/propose/apply/verify loop.                                                                                                                        |
-| Remote engine      | `lib/model-agent.mjs`, `lib/openrouter.mjs`           | Streaming OpenRouter loop, audited tools, usage accounting.                                                                                                             |
-| Provider profiles  | `lib/provider-config.mjs`, `lib/provider-catalog.mjs` | Private profile file, validation/digests, catalog and explicit discovery cache. Complete-profile CLI replacement requires the previously observed configuration digest. |
-| Provider transport | `lib/provider-transport.mjs`                          | Named-profile request binding, endpoint/auth freeze, redirect refusal; shared SSE core.                                                                                 |
-| Provider picker    | `src/provider-picker.mjs`, `lib/provider-session.mjs` | Built-in/custom picker entries, exact targets, explicit save/reload, and session identity/refusal checks.                                                               |
-| Controller         | `lib/controller.mjs`                                  | One active run, approval lifecycle, abort, undo stack, session re-arm.                                                                                                  |
-| Safety             | `lib/workspace.mjs`                                   | Path containment, atomic writes, mode preservation.                                                                                                                     |
-| Diff               | `lib/diff.mjs`                                        | Line diff and hunks used by the gate and cards.                                                                                                                         |
-| Process            | `lib/process.mjs`                                     | Bounded child processes, streaming output, test-result parsing.                                                                                                         |
-| Command policy     | `lib/command-policy.mjs`, `lib/command-execution.mjs` | Exact one-shot argv/script approval, audits, bounded results and outcome classification.                                                                                |
-| Linux sandbox      | `lib/linux-bwrap.mjs`, `lib/linux-snapshot.mjs`       | Required namespaces, minimal mounts, disposable no-follow snapshots and cleanup.                                                                                        |
-| Sessions           | `lib/session.mjs`                                     | `MATRIX_HOME`, atomic JSON sessions, backups, run event logs.                                                                                                           |
-| Application        | `src/matrix.mjs`                                      | React state/effects, controller and I/O composition; no presentational frame ownership.                                                                                 |
-| Presentation       | `src/frame.mjs`, `src/views.mjs`                      | `Frame`/`ScreenView`, primary/all-view routing, and shared scope-source definitions.                                                                                    |
-| Interaction        | `src/keyboard.mjs`, `src/event-reducer.mjs`           | Pure keyboard decisions and React-independent run-event effect reduction.                                                                                               |
-| UI projections     | `src/session-codec.mjs`, `src/result-projection.mjs`  | Transcript/session, usage, retained-output, and public result projections.                                                                                              |
-| Cards              | `src/cards.mjs`                                       | Pure card builders; no terminal or filesystem side effects.                                                                                                             |
-| Screens            | `src/screens/*.mjs`                                   | Empty, chat, permission, swarm, scope and vision views.                                                                                                                 |
-| Renderer           | `src/render.mjs`                                      | Render-only frame imports, fixed geometry, and geometry checks (`checkFrame`).                                                                                          |
-| Panels             | `lib/graph.mjs`                                       | Real workspace/scope/telemetry canvases and adaptive headers.                                                                                                           |
-| Raster             | `lib/raster.mjs`                                      | Pixel buffer, primitives, half-block truecolor, PNG encoder.                                                                                                            |
-| Swarm state        | `lib/swarm.mjs`                                       | Projects run events into three lanes with bounded logs.                                                                                                                 |
-| Doctor             | `lib/doctor.mjs`                                      | Runtime, workspace, git, test, credential, session-home and demo checks.                                                                                                |
-| Credentials        | `lib/credentials.mjs`                                 | One transport-free provider/key lookup shared by execution and cached UI availability.                                                                                  |
-| Public contracts   | `lib/contracts.mjs`                                   | Type-only JSDoc project/result/event/controller contracts; no runtime dependency.                                                                                       |
-| Engineering gates  | `scripts/check-*.mjs`                                 | Recursive syntax checks, fail-closed coverage ratchets, and dry-run pack inspection.                                                                                    |
+| Area               | File                                                                                                   | Responsibility                                                                                                                                                                                                                                               |
+| ------------------ | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| CLI                | `bin/matrix.mjs`                                                                                       | Interactive, headless, tour, dump, vision, smoke, bench, doctor, sessions.                                                                                                                                                                                   |
+| CLI parser         | `lib/cli.mjs`                                                                                          | Subcommands, flags, validation, help text.                                                                                                                                                                                                                   |
+| Project index      | `lib/project.mjs`                                                                                      | Budgeted workspace walk, language counts, test-runner detection, git context.                                                                                                                                                                                |
+| Structural parser  | `lib/scope.mjs`                                                                                        | Python indentation scopes; masked JS/TS brace scopes; Rust/Go/Ruby declarations.                                                                                                                                                                             |
+| Task layer         | `lib/task.mjs`                                                                                         | Intent classification, candidate scoring, grounded search results.                                                                                                                                                                                           |
+| Local engine       | `lib/local-agent.mjs`                                                                                  | Deterministic inspect/propose/apply/verify loop.                                                                                                                                                                                                             |
+| Remote engine      | `lib/model-agent.mjs`, `lib/openrouter.mjs`                                                            | Streaming OpenRouter loop, audited tools, usage accounting.                                                                                                                                                                                                  |
+| Provider profiles  | `lib/provider-config.mjs`, `lib/provider-catalog.mjs`                                                  | Private profile file, validation/digests, catalog and explicit discovery cache. Complete-profile CLI replacement requires the previously observed configuration digest.                                                                                      |
+| Provider transport | `lib/provider-transport.mjs`                                                                           | Named-profile request binding, endpoint/auth freeze, redirect refusal; shared SSE core.                                                                                                                                                                      |
+| Provider picker    | `src/provider-picker.mjs`, `lib/provider-session.mjs`                                                  | Built-in/custom picker entries, exact targets, explicit save/reload, and session identity/refusal checks.                                                                                                                                                    |
+| Controller         | `lib/controller.mjs`                                                                                   | One active run, approval lifecycle, abort, undo stack, session re-arm.                                                                                                                                                                                       |
+| Safety             | `lib/workspace.mjs`                                                                                    | Path containment, atomic writes, mode preservation.                                                                                                                                                                                                          |
+| Diff               | `lib/diff.mjs`                                                                                         | Line diff and hunks used by the gate and cards.                                                                                                                                                                                                              |
+| Process            | `lib/process.mjs`                                                                                      | Bounded child processes, streaming output, test-result parsing.                                                                                                                                                                                              |
+| Command policy     | `lib/command-policy.mjs`, `lib/command-execution.mjs`                                                  | Exact one-shot argv/script approval, audits, bounded results and outcome classification.                                                                                                                                                                     |
+| Linux sandbox      | `lib/linux-bwrap.mjs`, `lib/linux-snapshot.mjs`                                                        | Required namespaces, minimal mounts, disposable no-follow snapshots and cleanup.                                                                                                                                                                             |
+| Goal ownership     | `lib/goal-policy.mjs`, `lib/goal-guardian.mjs`, `lib/goal-containment.mjs`, `lib/goal-lease-probe.mjs` | Durable-goal process ownership: reviewed pidfd identity/signalling, guardian and PID-namespace pinning, ownership records and reconciliation. See [Durable goal process ownership](#durable-goal-process-ownership-and-test-containment).                    |
+| Goal evidence      | `lib/goal-source-manifest.mjs`, `lib/goal-context.mjs`                                                 | The bounded source identity of a goal's evidence: the complete filesystem input boundary the disposable snapshot exposes, with every entry's name, type, permission bits, content digest and symbolic-link target, using the snapshot's own exclusion rules. |
+| Sessions           | `lib/session.mjs`                                                                                      | `MATRIX_HOME`, atomic JSON sessions, backups, run event logs.                                                                                                                                                                                                |
+| Application        | `src/matrix.mjs`                                                                                       | React state/effects, controller and I/O composition; no presentational frame ownership.                                                                                                                                                                      |
+| Presentation       | `src/frame.mjs`, `src/views.mjs`                                                                       | `Frame`/`ScreenView`, primary/all-view routing, and shared scope-source definitions.                                                                                                                                                                         |
+| Interaction        | `src/keyboard.mjs`, `src/event-reducer.mjs`                                                            | Pure keyboard decisions and React-independent run-event effect reduction.                                                                                                                                                                                    |
+| UI projections     | `src/session-codec.mjs`, `src/result-projection.mjs`                                                   | Transcript/session, usage, retained-output, and public result projections.                                                                                                                                                                                   |
+| Cards              | `src/cards.mjs`                                                                                        | Pure card builders; no terminal or filesystem side effects.                                                                                                                                                                                                  |
+| Screens            | `src/screens/*.mjs`                                                                                    | Empty, chat, permission, swarm, scope and vision views.                                                                                                                                                                                                      |
+| Renderer           | `src/render.mjs`                                                                                       | Render-only frame imports, fixed geometry, and geometry checks (`checkFrame`).                                                                                                                                                                               |
+| Panels             | `lib/graph.mjs`                                                                                        | Real workspace/scope/telemetry canvases and adaptive headers.                                                                                                                                                                                                |
+| Raster             | `lib/raster.mjs`                                                                                       | Pixel buffer, primitives, half-block truecolor, PNG encoder.                                                                                                                                                                                                 |
+| Swarm state        | `lib/swarm.mjs`                                                                                        | Projects run events into three lanes with bounded logs.                                                                                                                                                                                                      |
+| Doctor             | `lib/doctor.mjs`                                                                                       | Runtime, workspace, git, test, credential, session-home and demo checks.                                                                                                                                                                                     |
+| Credentials        | `lib/credentials.mjs`                                                                                  | One transport-free provider/key lookup shared by execution and cached UI availability.                                                                                                                                                                       |
+| Public contracts   | `lib/contracts.mjs`                                                                                    | Type-only JSDoc project/result/event/controller contracts; no runtime dependency.                                                                                                                                                                            |
+| Engineering gates  | `scripts/check-*.mjs`                                                                                  | Recursive syntax checks, fail-closed coverage ratchets, and dry-run pack inspection.                                                                                                                                                                         |
 
 The UI is split so that card construction can be tested without a terminal, and so screen
 rendering can be checked at fixed dimensions with `MATRIX_COLS`/`MATRIX_ROWS` or `checkFrame`.
@@ -521,6 +523,98 @@ execution and undo until operator reconciliation. Effect and undo results report
 stable retained paths and cleanup-pending state; callers can pass an effect result
 to the receipt builder to preserve its cleanup uncertainty.
 
+### Durable goal process ownership and test containment
+
+A durable goal owns a workspace for the duration of its attempt, and the host must be
+able to prove that nothing it started is still running. That is the process-ownership
+boundary. It is **not** a filesystem or network sandbox for the goal's test command,
+and the two are separate properties.
+
+**Process ownership.** `lib/goal-policy.mjs` records an ownership entry for every
+dispatched operation. The identity of the running tree is established with the
+reviewed pidfd helper (`scripts/matrix-pidfd-helper.c`, built per machine into
+`$MATRIX_HOME/bin` by `scripts/build-pidfd-helper.mjs`): it opens a pidfd, re-reads
+`/proc/<pid>/stat`, and compares the host boot id, the process start time and
+optionally the process group before it signals anything, so a reused pid is never
+signalled. The helper is the only signalling path. `lib/goal-containment.mjs` starts
+the goal's test command inside a Bubblewrap PID namespace
+(`bwrap --unshare-user --unshare-pid --dev-bind / / -- node lib/goal-guardian.mjs`)
+and `lib/goal-guardian.mjs` runs inside it, so a detached descendant cannot leave
+the namespace. The host pins the monitor, the namespace init and the namespace inode
+before it releases the guardian's gate, and it settles that exact identity on
+completion, timeout and cancellation. When teardown cannot be proven, the executor
+persists a durable `execution: {teardown: "unverified"}` marker and every later
+entry point refuses with `safe-stop` instead of creating a generation or dispatching
+work. `lib/goal-lease-probe.mjs` reconciles only a record bound to the sha256 of
+the reviewed helper. Process ownership requires Linux, `bubblewrap`, `util-linux` and
+a C toolchain to build the helper; without them the capability fails closed and
+`matrix doctor` reports `goal-ownership` as unverified.
+
+**Test containment is the sandboxed-command boundary.** The goal's approved test
+command runs in the same isolation layout as `run_sandboxed_command`: a
+**disposable no-follow snapshot** of the goal workspace bound at the canonical
+workspace path, a **minimal read-only root** (`/usr` read-only, a fresh `/proc`
+and `/dev`, a bounded `/tmp`, and no `/home`, `/root` or `/var`), a **new empty
+network namespace** and the **credential-cleared environment**. Every write the
+test makes is absorbed by the snapshot and discarded when the attempt ends, so a
+test never modifies the live workspace, never reaches the rest of the host
+filesystem and never reaches the host network. Host credential files such as
+`~/.matrix/credentials.json` cannot be opened from the isolated test at all.
+`lib/linux-bwrap.mjs` owns that shared layout and `lib/goal-containment.mjs`
+builds the durable boundary from it. The namespace deliberately omits
+`--die-with-parent`, so the goal's namespace survives the death of its owner
+and a later process can still prove its teardown.
+
+**Evidence freshness.** The goal's test evidence certifies the exact inputs the
+approved test ran against. The disposable snapshot exposes the whole
+workspace, and arbitrary approved test code can open any path in it — a
+sibling of its working directory, a file that is never named on the command
+line and that no static import mentions — so a working-directory selection or
+an import closure cannot establish complete coverage. `lib/goal-source-manifest.mjs`
+therefore derives the identity from the filesystem boundary itself: the whole
+workspace, walked with the snapshot's own exclusion rules (`OMITTED_DIRECTORIES`,
+`SENSITIVE_FILES`, `SENSITIVE_SUFFIX` and the Matrix home are imported from
+`lib/linux-snapshot.mjs`, not duplicated), bounded by the snapshot's own entry,
+directory, depth and byte budgets, and never following a symbolic link. For
+every entry it records whether it exists, its entry type, its permission bits,
+the content digest of a regular file and the target bytes of a symbolic link.
+The plan's own files, the runner configuration, its working directory and the
+goal's artifact and edit paths are still named as inputs as well.
+
+The identity is computed at dispatch, compared against the live workspace and
+the disposable snapshot before any repository code runs, re-read after the
+test returns and evaluated again when the criteria are considered. A change,
+an addition, a deletion, a permission change or a retargeted link inside that
+boundary stops the goal with `test-inputs-changed` instead of letting it
+complete on stale evidence. An input that cannot be read or hashed, a selection
+directory that cannot be listed, or coverage beyond the snapshot-compatible
+entry, directory, depth or byte budgets refuses with `test-inputs-unknown`
+instead of accepting partial evidence.
+
+**Required trust and approval.** Reaching this boundary requires the ordinary
+repository and test-plan trust gate, an explicit one-shot approval of the exact test
+plan, and a separate `--allow-tests` decision for headless runs; `--yes` authorizes
+edits only and never authorizes tests. The trust decision is bound to workspace and
+plan hashes and is revalidated at dispatch. The durable-goal design intends to give
+the goal's own writes a stricter boundary than the goal's tests, so the test side is
+the weaker side by construction.
+
+**Contract status.** `docs/next-phase/decisions/DUR-001.md` recorded the design
+contract that a surviving job may write only to a disposable snapshot, and that
+detachable work is exposed only disposable snapshots. The 2026-11-11 contract
+repair implements that contract with the boundary described above. The contract
+text is unchanged, and the repair is **submitted, not accepted**: an independent
+security review must confirm the boundary and the source identity before the
+contract is treated as met. See the
+[review addendum to that decision record](docs/next-phase/decisions/DUR-001.md#2026-11-11-review-addendum-open-contract-discrepancy)
+and [section 14 of the INT-101 integration report](docs/next-phase/reports/2026-11-09-int101-integration.md#146-dur-001-contract-repair-submitted).
+Documenting the implementation does not resolve it. The acceptable dispositions are
+to give the goal test path the same disposable, no-network snapshot boundary as
+`run_sandboxed_command`, or to amend the DUR-001 contract with an explicit,
+reviewed statement of the accepted live-filesystem and host-network boundary and its
+credential exposure. Until the chief records one of them, the discrepancy stays open
+and this release stays blocked.
+
 The opt-in provider evaluator executes its workspace tests in a Linux Bubblewrap snapshot and
 requires the sandbox probe to succeed before starting. Test trust and execution audits still cover
 the detected plan. The sandbox isolates workspace processes from host scoring; unrelated hostile
@@ -568,3 +662,7 @@ CI and any deliberately scoped live-provider evidence remain separate from local
   behavior.
 - Approval gates protect edits made through Matrix. They are not an OS sandbox around arbitrary
   commands run by a project's own test suite.
+- A durable goal's approved test command runs in a disposable workspace snapshot with no network and
+  a cleared environment, in the same isolation layout as `run_sandboxed_command`. The boundary is
+  SUBMITTED for independent security review; see
+  [Durable goal process ownership and test containment](#durable-goal-process-ownership-and-test-containment).

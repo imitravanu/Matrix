@@ -15,6 +15,8 @@
 - **Acceptance review report `docs/next-phase/reports/2026-11-09-qa101-acceptance-review.md` SHA-256:** `e4e05fb9373c184f4e1bd6952bd75057fb6d29d33bde974ea4b13ce3e7a3b859`
 - **Chief disposition on 2026-11-10** — **ACCEPTED** for the local durability integration against the candidate in section 12. The C1 repair changes the test oracle.
 - **Hosted CI on 2026-11-10** — **PASSED** on Node 22 and Node 24 in [run 42867616263](https://github.com/imitravanu/Matrix/actions/runs/42867616263) for branch `matrix/int101-hosted-ci` at `46ed6ea`. See section 13.
+- **Release readiness on 2026-11-11** — **BLOCKED** for candidate `b7966a0` whose hosted matrix is [run 42871859453](https://github.com/imitravanu/Matrix/actions/runs/42871859453). Every verification, safety and packaging gate passes. A documentation patch closed the release-readiness findings and revised the DUR-006 and integrated manifests, but the DUR-001 durable-snapshot contract is still unmet pending chief disposition, and the patched candidate still needs its own hosted run. See section 14.
+- **Candidate record on 2026-11-12** — the current candidate is the DUR-005 29-file `e239d002…`, DUR-006 14-file `fe95bc4c…` and integrated 45-file `f46b90b4…` record in section 14.6. The integrated manifest was corrected from the 43-file list to 45 files by restoring `package.json` and `eval/durability/run.mjs`. The correction is metadata only and changed no runtime file. The DUR-001 contract repair is **ACCEPTED** against that candidate. The release stays **BLOCKED** on a hosted CI run for the exact committed candidate; run 42871859453 does not cover this tree.
 - **Release status** — commit and push were authorized and performed; tag, publication and deployment were not, and remain separate decisions. Live capability evaluation remains NOT EVALUATED.
 
 The earlier implementation results in sections 1–5 and 7 describe the original
@@ -34,7 +36,7 @@ This report delivers the serial integration of the durable phase under the chief
    - Node 22.23.1: `npm run check` exits 0 with **1,032/1,032 tests passing** (0 failed, 0 skipped), and all 37 coverage floors met (overall 93.27% lines / 83.02% branches / 94.85% functions).
    - Evaluation baseline: `npm run eval` maintains the 16/16 contract pass baseline (9 task success, 4 not completed, 3 task n/a, 0 safety violations).
    - Smoke suite: `npm run smoke` passes 32 frame checks across 4 terminal geometries.
-   - Packaging check: `npm run pack:check` verifies 109 allowlisted files, 419,679 bytes packed (dry run).
+   - Packaging check: `npm run pack:check` verifies 109 allowlisted files, 422,876 bytes packed (dry run).
    - Benchmarks: `npm run bench` passes all 32 cases with temp cleanup verified.
 4. **Production Call Paths (G2):** Complete static call-path tracing confirms that all CLI, runtime, store, operations, and recovery invocations enforce strict workspace locking, generation/sequence store fencing, and non-replayable execution authority. No path bypasses store fences or locks.
 5. **Real CLI Behavior & Recovery (G4):** In an isolated temp workspace and private temp `MATRIX_HOME` (`0o700`), the real CLI was exercised end-to-end using the default offline engine (Local Forge):
@@ -236,7 +238,7 @@ All engineering delivery gates were executed serially on the exact candidate tre
 ### 5. Packaging Verification (`npm run pack:check`)
 
 - Evaluator: `node scripts/check-pack.mjs` (Node 24).
-- **109 files packed** (dry run), 419,679 bytes packed, 1,643,455 bytes unpacked.
+- **109 files packed** (dry run), 422,876 bytes packed, 1,656,438 bytes unpacked.
 - Allowlist matches the durable phase additions (`lib/goal-*.mjs`, `src/goal-*.mjs`, `src/screens/goal.mjs`).
 - Private repository, main entrypoint, and bin mapping verified; zero tarball published.
 
@@ -662,7 +664,7 @@ The portability repair changed `docs/next-phase/fixtures/dur005-driver.mjs`,
 
 | Manifest                     | Accepted value                                                     | Value after the portability repair                                 |
 | ---------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------ |
-| DUR-005 23-file candidate    | `10d99cb02543adccf7bea8859632f21a0910ba6e8d25493c4fa5bd01f37dc749` | `4ecd249ea37b6dd9150caa8942fbf0819e921b17afda8d1ada2b721d0718ee04` |
+| DUR-005 23-file candidate    | `10d99cb02543adccf7bea8859632f21a0910ba6e8d25493c4fa5bd01f37dc749` | `d43753d8c5362ad7a4ef102c6cc68c0f4a7f2aee0cf2b50a93a79bb626ece14e` |
 | Integrated 39-file candidate | `dfa62616fa86221aa37601e1c271a9b7fe88e6d3bfc66340e4014a116e973847` | `2e7419851e8f26333a2219d4f026092b62968f26fd0538a54a299e00c192676c` |
 | DUR-006 14-file candidate    | `da9d9d752d0c44b042cb8f608e8b50ca7eaef0498569c0c1870f37dcdecdbce8` | unchanged                                                          |
 
@@ -727,11 +729,11 @@ Step detail recorded from the hosted job logs:
 | Doctor `goal-ownership` | ok                                                | ok                                                |
 
 The packed tarball byte size differs between the runner (420,429 bytes) and a
-local checkout (419,679 bytes) while the file count (109) and the unpacked
-content size (1,643,455 bytes) are identical; the runner ships npm 12.2.2
+local checkout (422,876 bytes) while the file count (109) and the unpacked
+content size (1,656,438 bytes) are identical; the runner ships npm 12.2.2
 against npm 12.2.0 locally, which changes the archive encoding, not the
 content. A fresh clone of the pushed branch reproduces 109 files and
-1,643,455 unpacked bytes and passes `npm run pack:check`.
+1,656,438 unpacked bytes and passes `npm run pack:check`.
 
 ### 13.6 Local evidence supporting the hosted run
 
@@ -762,8 +764,8 @@ Hosted CI is now EVALUATED and PASSING for this candidate. The following remain
 open and are not resolved by this run:
 
 - **Release actions are still unauthorized.** No tag, no publication, no
-  deployment was performed. `RELEASE.md` remains a checklist with every gate
-  unchecked, and the release decision is separate.
+  deployment was performed. The release decision is separate, and section 14
+  records the release-readiness verdict for this candidate.
 - **Live provider capability remains NOT EVALUATED.** The hosted run is
   network-free and uses no real credentials. No live provider availability,
   model naming, pricing, context limit, tool-call support, latency or response
@@ -777,13 +779,425 @@ open and are not resolved by this run:
   mode of an existing directory. The hosted workflow therefore has to create
   the home privately. A production repair belongs to the goal-store boundary
   and was not made here.
-- **Two accepted follow-ons are unaffected.** The goal test sandbox still binds
-  the live host root read-write without a network namespace
-  (`lib/goal-containment.mjs`), and the production `namespaceMembers` check
-  still matches on inode alone. Both remain open as recorded in section 9.
+- **The goal test path is contained by a PID namespace over the live host root.**
+  `lib/goal-containment.mjs` starts the goal's approved test command with
+  `bwrap --unshare-user --unshare-pid --dev-bind / / --`, and the command's
+  working directory is the live workspace. Section 14.5 reproduces the effect
+  and classifies it as a P2 follow-on rather than a release blocker.
+- **The production `namespaceMembers` check still matches on inode alone**, so
+  a reused inode can cause a spurious `namespace-member-survived` refusal. It
+  can only over-refuse recovery and cannot authorize anything.
 - **The C1 conservative production refusal remains a P3 follow-on**, as
   recorded in section 12.
 
 The local durability milestone and the hosted CI gate are complete for this
 candidate. Live capability evaluation and every release action require separate
 authorization.
+
+---
+
+## 14. Release-readiness review (2026-11-11)
+
+**Verdict: BLOCKED.** This section records the release review of the pushed
+candidate and the documentation patch that closed its findings. The patch changes
+no runtime behavior, creates no tag, publishes nothing, deploys nothing, and was
+not committed or pushed as part of the review. The verdict stays BLOCKED because
+the DUR-001 durable-snapshot contract is still unmet and the patched candidate
+still needs its own hosted CI run.
+
+### 14.1 Candidate identity
+
+- Reviewed commit `b7966a076fab79724e56ba79afb62c1ebdda0ed3` on branch
+  `matrix/int101-hosted-ci`, base `ff55a2c2aaeb863e881a5a8d0e112eb78ded0204`.
+- The working tree was clean: no uncommitted, unstaged or untracked change.
+- `origin/matrix/int101-hosted-ci` and `origin/matrix/engineering-hardening`
+  both matched the expected commits; `master` was untouched at `ed14f33`.
+- The reviewed commit is the branch head, so the hosted gate below is evidence
+  for this candidate rather than for an earlier one.
+
+### 14.2 Hosted CI covers the reviewed commit
+
+[Run 42871859453](https://github.com/imitravanu/Matrix/actions/runs/42871859453)
+(run number 13, event `push`, 2026-11-10T18:06:55Z to 18:11:32Z) reports
+`head_sha` `b7966a076fab79724e56ba79afb62c1ebdda0ed3` — byte-identical to the
+reviewed commit — branch `matrix/int101-hosted-ci`, conclusion **success**. Both
+the Node 22 job and the Node 24 job passed all 18 steps. This satisfies the
+`RELEASE.md` hosted-matrix gate for this candidate.
+
+### 14.3 Gate evaluation
+
+Every `RELEASE.md` gate was evaluated against evidence for this candidate. The
+results, the evidence and the two open items are recorded in
+[`RELEASE.md`](../../../RELEASE.md#required-gates-for-every-internal-release-candidate)
+and in the
+[release-readiness record](../../../RELEASE.md#release-readiness-record--rel-001-candidate-b7966a0-reviewed-2026-11-11).
+
+Satisfied by evidence: lockfile install, engineering gate, standalone
+network-free suite, agent evaluation with the strict reviewed baseline, the
+Linux sandbox gate with the real command sandbox adversarial tests and the
+Doctor policy probe, smoke, bench, package verification, direct pack
+inspection, dependency audit, and the hosted CI matrix.
+
+Locally re-run for this review because the candidate had moved since the earlier
+local evidence: `npm run bench` (all ordinary cases completed, functional checks
+passed, temp cleanup removed, 0/0 active resources) and `npm pack --dry-run
+--json` (109 entries, 422,876 bytes packed, 1,656,438 unpacked, shasum
+`345529ac19f5bfeed3b8c04d6cee50138b623b5e`, executable `bin/matrix.mjs`, no
+`.tgz`). Every other gate reused the hosted run and the accepted reviews.
+
+Not satisfied at the time of the review, and now closed by the documentation
+patch in section 14.6: the final-diff checkbox reported 25 trailing-whitespace
+findings in three newly committed Markdown documents, `CHANGELOG.md` did not
+record the durable-goal capability, and the shipped `README.md`/`MATRIX.md` did
+not document the goal containment boundary. After the patch,
+`git diff --check ff55a2c` is empty, the changelog carries the durable-goal
+entry, and both documents state the boundary.
+
+Two things therefore remain open, and they are the reason the verdict is still
+BLOCKED: the chief disposition of the DUR-001 contract discrepancy
+(section 14.5), and a hosted matrix run for the patched candidate
+(section 14.8).
+
+### 14.4 Follow-on review
+
+The four follow-ons accepted in the QA-101 disposition were each assessed
+against the intended release and **none blocks it**:
+
+- **CR-16 harness barrier forwarding to the real store (P2, QA)** affects the
+  fidelity of one harness case only. The chief's independent probe shows the
+  production store refuses a post-cancel dispatch with `stale fence`, so the
+  safety cutoff does not depend on the harness barrier.
+- **Cancel-versus-dispatch stop classification (P3, executor)** changes the
+  reported stop reason, not the safety decision.
+- **CR-08 teardown-refusal branch test hook (P3, executor)** leaves a fail-closed
+  branch without a dedicated test hook; CR-08 meets its criterion through the
+  verified-stopped branch.
+- **Production namespace membership discrimination after inode reuse
+  (P3, executor)** can cause a spurious `namespace-member-survived` refusal.
+  It can only over-refuse recovery and cannot authorize anything.
+
+### 14.5 Open contract discrepancy (DUR-001 durable snapshot requirement)
+
+`lib/goal-containment.mjs` starts the goal's approved test command with
+
+```
+bwrap --unshare-user --unshare-pid --dev-bind / / -- node lib/goal-guardian.mjs
+```
+
+and `lib/goal-policy.mjs` sets the command's working directory to the live
+workspace (`plan.cwd ?? realpathSync(workspaceRoot)`). Reproduced on the review
+host with that exact argv: a process inside the namespace created a file on the
+live host filesystem and reached the host loopback network.
+
+This is weaker than the `run_sandboxed_command` boundary in
+`lib/linux-bwrap.mjs` (minimal read-only root, `--unshare-net`, disposable
+no-follow snapshot, cleared environment) and it does not meet the design
+contract recorded in `docs/next-phase/decisions/DUR-001.md`: "exposing only
+disposable snapshots to detachable work" and "Any surviving job may write only
+to its disposable snapshot".
+
+**This is an open contract discrepancy, not a documentation defect, and it is not
+resolved by documenting the implementation.** The decision record's contract text
+is unchanged. A dated, clearly marked review addendum has been appended to
+`docs/next-phase/decisions/DUR-001.md` recording the discrepancy as **open, for
+chief disposition**, with the reproduction, the scope of the exposure and the two
+acceptable dispositions:
+
+1. meet the contract by giving the goal test path the same disposable, no-network
+   snapshot boundary as `run_sandboxed_command`; or
+2. amend the contract by fresh independent review, with an explicit statement of
+   the accepted live-filesystem and host-network boundary, its credential exposure
+   and the trust decision that authorises it.
+
+Until the chief records one of them, the DUR-001 durable-snapshot contract is
+**unmet** and this release stays blocked.
+
+Scope of the exposure, stated so the disposition can be made on facts. Only a test
+command that a user has explicitly trusted and approved can reach the boundary: the
+ordinary repository and test-plan trust gate, an explicit approval of the exact
+plan and a separate `--allow-tests` decision are all required, and `--yes`
+authorizes edits only. The ordinary, non-goal test path already runs repository
+test code on the host with the host user's permissions
+(`lib/process.mjs` defaults to `processBackend: "host"`), so the goal path adds
+process-teardown guarantees without introducing a new class of host execution. The
+durable evidence model binds test evidence to a dispatch-time fingerprint, so a
+test that changes a declared artifact cannot produce a pass (QA-101 CR-09).
+
+The shipped `README.md` and `MATRIX.md` now state the boundary explicitly: the live
+filesystem and host network, the credential exposure, and the required trust and
+approval. No user-facing claim is inaccurate, and the stated boundary is what the
+code does.
+
+### 14.6 DUR-001 contract repair (SUBMITTED)
+
+**SUBMITTED for independent security review. The contract is implemented, not
+accepted, and the release stays BLOCKED.**
+
+> **Update of 2026-11-11, after the focused independent review.** The focused
+> independent review of the repair described in this section returned
+> **CHANGES REQUIRED**: the test evidence was bound to an incomplete input set
+> (P1), the crash regression carried a vacuous success-receipt check (P2), and
+> the candidate manifest did not bind the shared sandbox implementation and the
+> new regressions. All three are repaired, the candidate manifest is expanded
+> to 28 (DUR-005) and 44 (integrated) files, and the repaired repair is
+> **submitted for a fresh independent security review**. The two packaged
+> documents were corrected in the same repair, because they still described the
+> live-workspace and host-network boundary that the repair replaced, so their
+> digests changed again. The evidence and the digests for the repaired
+> candidate are in the
+> [DUR-005 submission](../submissions/DUR-005.md#november-11-dur-001-independent-review-repair-submitted);
+> the numbers in the tables below describe the repair as first submitted and
+> are superseded by that record.
+>
+> **Update of 2026-11-12.** A fresh focused review reproduced two remaining
+> source-identity blockers in `lib/goal-source-manifest.mjs`: unnormalized
+> root-relative paths hid data-file contents, and installed dependency bytes
+> were excluded from the identity while the snapshot executes them. Both are
+> repaired, with fail-closed handling for unreadable, unsupported and
+> over-budget coverage, and permanent regressions for the whole family. The
+> conflict remains **SUBMITTED**; current evidence and the revised digests are
+> in the
+> [DUR-005 submission](../submissions/DUR-005.md#november-12-blocker-repair-submitted).
+> The numbers in the tables below remain the first-submission record.
+>
+> **Update of 2026-11-12 (coverage-boundary repair and candidate-record
+> correction).** A third wave repaired the source identity in
+> `lib/goal-source-manifest.mjs` so that it is derived from the whole
+> snapshot boundary the disposable snapshot exposes — the whole workspace as the
+> selection root, the snapshot's own exclusion rules and budgets imported from
+> `lib/linux-snapshot.mjs`, a bounded no-follow traversal, and every entry's
+> existence, entry type, permission bits, content digest and symbolic-link
+> target. A working-directory selection or a static import closure is no longer
+> treated as a coverage proof. The focused re-review of that repair
+> (`/tmp/matrix-dur001-independent-review.md`) closed the two runtime blockers
+> in the reviewed scope — 38 submitted regression tests and 3 independent probes
+> pass, with real Bubblewrap on Node 24.21.0 — and left one candidate-record
+> issue: the integrated manifest held only the 43-file DUR-005/DUR-006 union
+> and had dropped `package.json` and `eval/durability/run.mjs`. Section 12
+> defines the integrated fingerprint as the sorted union of the DUR-005 and
+> DUR-006 path lists **plus** `package.json` and `eval/durability/run.mjs`, so
+> the 43-file list was not the integrated manifest, and because the durability
+> harness is modified in this candidate, that digest did not bind the changed
+> acceptance evidence. Both members are restored, the list is 45 unique files,
+> and the digest was recomputed from the repository root over sorted relative
+> paths, each followed by one NUL byte and the raw file bytes. The digest was
+> recomputed and checked against the reviewed candidate's expected value, not
+> copied from the review. The manifest file is now stored in sorted order, so
+> reading it top to bottom reproduces the digest; the previous file listed
+> `MATRIX.md` and `README.md` in ambient-locale order, which hashed to a
+> different value than the recorded sorted digest. The correction changed no
+> runtime file, so the DUR-005 and DUR-006 digests are unchanged, the reviewed
+> runtime evidence still covers this candidate, and no runtime suite was rerun
+> for it. The 43-file value
+> `db8fd6856f0780faa9cb84f94c51b461b31091a1f6c0b85b29d75d3db643cd88` is
+> superseded rather than deleted: it remains the identity of the 43-file list
+> that was recorded, which was not the integrated manifest. The current
+> candidate record is:
+
+| Manifest         | Members                                                | SHA-256                                                            |
+| ---------------- | ------------------------------------------------------ | ------------------------------------------------------------------ |
+| DUR-005          | 29 (`docs/next-phase/fixtures/dur005-members.txt`)     | `e239d002633ca94134ed18e170d8912304c69c1b6208499edf22e929b2ca5c68` |
+| DUR-006          | 14                                                     | `fe95bc4cee570936f9e6c9567e4bf3f94a69c2e4cbe2edfdbaf3d4356475bf1a` |
+| Integrated union | 45 (`docs/next-phase/fixtures/integrated-members.txt`) | `f46b90b424625f804d0e959dcb43151cd30e92b15f0f3818a5bb0b02797f7c28` |
+
+> The numbers in the tables below remain the first-submission record.
+>
+> **Update of 2026-11-12 (acceptance).** The independent evidence review
+> required by `docs/next-phase/AUDIT.md` is complete: every finding of the
+> focused repair review is closed, and the repair is **ACCEPTED** against the
+> candidate recorded above — HEAD
+> `b7966a076fab79724e56ba79afb62c1ebdda0ed3` on branch `matrix/int101-hosted-ci`
+> plus the submitted working-tree repair, with the integrated 45-file candidate
+> at
+> `f46b90b424625f804d0e959dcb43151cd30e92b15f0f3818a5bb0b02797f7c28`. The
+> accepted behavior is the disposable-snapshot test boundary and its source
+> identity, which implements disposition 1 of section 14.5; the contract text in
+> the decision record is unchanged and is not amended by this acceptance. The
+> acceptance rests on 38/38 submitted manifest and isolation regression tests
+> with 0 failed and 0 skipped and 3/3 independently reconstructed probes with 0
+> failed, on Node 24.21.0 with real Bubblewrap, the closed candidate-record
+> correction, and clean targeted Prettier and `git diff --check`. The review was
+> focused on the snapshot identity repair, not a new audit of every completed
+> phase; the full Node 22/24 gate at 1,075/1,075 and the durability harness at
+> 20/20 were reported by the submission and were not independently rerun or
+> log-verified in that turn. **The release stays BLOCKED** on the exact-candidate
+> hosted CI run described in section 14.9; acceptance of the repair does not
+> move it to READY.
+
+The repair implements disposition 1 of section 14.5: the durable-goal test path
+now runs in the same isolation layout as `run_sandboxed_command`.
+
+#### What changed
+
+| File                                   | Change                                                                                                                                                                                                       |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `lib/linux-bwrap.mjs`                  | The shared isolation layout was extracted into `linuxIsolationArguments`, with `LINUX_SANDBOX_ENV` and `LINUX_SANDBOX_NAMESPACE_FLAGS` exported. `linuxBwrapArguments` produces byte-identical arguments.    |
+| `lib/goal-containment.mjs`             | The durable namespace uses that layout. `createGoalTestIsolation` builds the per-dispatch boundary. `goalRuntimePrefix` and `goalRuntimeRealpath` are exported for direct testing.                           |
+| `lib/goal-policy.mjs`                  | The goal test runner creates the disposable snapshot, verifies that the live workspace and the snapshot both still match the dispatch-time fingerprint, and runs the approved plan inside the isolated root. |
+| `lib/goal-executor.mjs`                | The dispatched test carries its source paths and the dispatch-time source fingerprint, so the evidence is bound to the exact snapshot.                                                                       |
+| `eval/durability/run.mjs`              | CR-08 observes the owned tree through namespace membership and the journal instead of host-visible files written by the isolated test.                                                                       |
+| `test/goal-runtime.test.mjs`           | The containment tests observe the disposable snapshot they own; the crash test observes the owned tree through namespace membership.                                                                         |
+| `test/goal-cli-runtime.test.mjs`       | The approved plan's evidence is the accepted test criterion, and the test's own write is asserted to stay inside the disposable snapshot.                                                                    |
+| `test/goal-test-isolation.test.mjs`    | **New.** The boundary regressions.                                                                                                                                                                           |
+| `test/goal-isolation-builder.test.mjs` | **New.** The isolation builder's shape and guards.                                                                                                                                                           |
+
+#### The boundary
+
+- The approved test command runs in a **disposable no-follow workspace
+  snapshot** of the goal workspace, bound at the canonical workspace path. Every
+  write is absorbed by the snapshot; the live workspace is never modified by a
+  test, and no test write becomes a live edit or an undo record.
+- The isolated root has a read-only `/usr`, the exact current Node runtime, a
+  fresh `/proc` and `/dev`, a bounded `/tmp`, and **no** `/home`, `/root` or
+  `/var`. Host credential files such as `~/.matrix/credentials.json` cannot be
+  opened at all.
+- The namespace has a **new empty network namespace**: the host loopback and
+  every host interface are unreachable.
+- The environment is the credential-cleared environment the trusted test runner
+  already produced, with `HOME` replaced by a path that does not exist inside
+  the isolated root.
+- Only the trusted host files the plan needs are mounted read-only and exactly:
+  the guardian, the dispatch gate, the current Node runtime and the approved
+  executable. The Node runtime distribution that owns the current Node is bound
+  read-only only when the approved plan is one of the tools installed with it.
+- **Unchanged:** the PID-namespace ownership, the guardian, the pinned namespace
+  identity, the reviewed pidfd signalling, the durable `teardown: "unverified"`
+  block, the exact test-plan approval, the cumulative budgets, the journal
+  protocol and the crash-recovery path. The durable boundary deliberately does
+  not use `--die-with-parent`, so the goal's namespace still survives the death
+  of its owner and a later process can still prove its teardown.
+- **Evidence binding:** the live workspace and the disposable snapshot must both
+  still match the fingerprint captured at dispatch, the evidence claims that
+  fingerprint, and the executor rejects evidence whose fingerprint or plan hash
+  does not match the dispatched inputs. A source change between dispatch and
+  observation invalidates the result instead of certifying the current bytes.
+
+#### Verification
+
+| Gate                                | Node 24.21.0                                                                                                                       | Node 22.23.1                                         |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `npm run check`                     | 1,042 tests, 1,042 pass, 0 fail, 0 skipped, exit 0                                                                                 | 1,042 tests, 1,042 pass, 0 fail, 0 skipped, exit 0   |
+| Coverage summary                    | 93.22% lines / 83.08% branches / 94.86% functions                                                                                  | 93.26% lines / 82.97% branches / 94.87% functions    |
+| `lib/goal-containment.mjs` ratchet  | 85.71 / 62.84 / 84.21 against the 80 / 55 / 80 floor                                                                               | 85.71 / 62.84 / 84.21 against the 80 / 55 / 80 floor |
+| `npm run eval:durability`           | 20 cases, 20 passed, 0 failed                                                                                                      | 20 cases, 20 passed, 0 failed                        |
+| `npm run pack:check`                | 109 allowlisted files, private/main/bin posture verified                                                                           | reused, the pack is runtime-independent              |
+| `npm pack --dry-run --json`         | 109 entries, 426,427 bytes packed, 1,668,886 unpacked, shasum `3cba8bb4ec982eff9700a6812781b49e5c6249c9`, bin mode 0755, no `.tgz` | reused                                               |
+| `lint`, `typecheck`, `format:check` | exit 0                                                                                                                             | exit 0                                               |
+
+The coverage floor for `lib/goal-containment.mjs` was **not** lowered. The new
+isolation code raised the module's branch coverage from 51.85% to 62.84% against
+the unchanged 55% floor, by the new boundary regressions.
+
+Two per-test time budgets were raised: the durable-goal test files used a 20 s
+budget that the isolated execution could exceed under full-suite parallelism on
+the slower runtime. The budgets moved to 60 s. **No assertion was changed,
+weakened or skipped**, and the affected tests pass in isolation in about 5 s.
+
+#### Regressions
+
+`test/goal-test-isolation.test.mjs` (new, 5 cases) drives the real goal runtime
+with temporary workspaces and fake credentials and proves that the approved goal
+test cannot read a host credential canary, cannot reach a host loopback server,
+cannot modify the live workspace or a file outside the snapshot, that its child
+and grandchild processes are contained and torn down, that cancelling the test
+settles the owned namespace, and that a SIGKILLed attempt leaves a durable block
+and no stale test evidence. `test/goal-isolation-builder.test.mjs` (new, 4 cases)
+asserts the shape of the boundary itself: the snapshot bind, the network
+namespace, the cleared environment, the absence of `--die-with-parent`, the
+read-only trusted binds and the builder's refusals. The updated
+`test/goal-runtime.test.mjs` and `test/goal-cli-runtime.test.mjs` cover the
+fresh-process recovery path under the same boundary.
+
+### 14.7 Documentation patch and revised fingerprints
+
+This review's findings were closed by a documentation-only patch. It changed no
+runtime behavior, no test, no workflow and no packaged code, but it did change two
+files that are members of published manifests, so every affected digest was
+recomputed rather than assumed.
+
+| Manifest                     | Value before this patch                                            | Value after this patch                                             |
+| ---------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| DUR-005 23-file candidate    | `d43753d8c5362ad7a4ef102c6cc68c0f4a7f2aee0cf2b50a93a79bb626ece14e` | unchanged — no member file was edited                              |
+| DUR-006 14-file candidate    | `da9d9d752d0c44b042cb8f608e8b50ca7eaef0498569c0c1870f37dcdecdbce8` | `fd89f0ab8d8a093310a936be29d1a428a1dc77df234241a8ddc1d1d47f266bf3` |
+| Integrated 39-file candidate | `2e7419851e8f26333a2219d4f026092b62968f26fd0538a54a299e00c192676c` | `b436903fd2de87e19762e27380d2bcc7ecc9b51b34eec3a49df3139228dfc3e4` |
+
+The DUR-006 and integrated manifests changed because `README.md` and `MATRIX.md`
+are members of both. `CHANGELOG.md` is in the package allowlist but in no
+manifest, so it changed no digest. Per-file SHA-256 after the patch:
+
+| File           | SHA-256                                                            |
+| -------------- | ------------------------------------------------------------------ |
+| `MATRIX.md`    | `5812ee79aa29d842115d7b63e265d6a2c3c7e5447393f8b82093f549bfc05151` |
+| `README.md`    | `fa268b3e425733117d8649a943f6769949bcbed27f85243f324914edac295beb` |
+| `CHANGELOG.md` | `7985cb68877d3f71703aefb7b12cc92a8e90362c07d09a2b8f7366a0ef9b4340` |
+
+The earlier `RELEASE.md` statement that this work "changes no fingerprinted file"
+was **wrong** and has been corrected in place. The DUR-006 and integrated digests
+above supersede the values recorded for those manifests in sections 12 and 13; the
+accepted DUR-005 and DUR-006 _reviews_ keep their own candidate identities and are
+not rewritten, because the change is a documentation edit to two member files and
+not a runtime change.
+
+What the patch contains:
+
+1. The 25 two-space Markdown hard breaks in `docs/next-phase/decisions/DUR-001.md`,
+   `docs/next-phase/reports/2026-11-05-dur001-independent-review.md` and
+   `docs/next-phase/reports/2026-11-05-dur001-independent-re-review.md` were
+   converted to backslash hard breaks. All 25 lines are outside code fences and
+   outside `<pre>` blocks, so the two forms are equivalent CommonMark hard line
+   breaks and the rendered meaning is unchanged. `git diff --check ff55a2c` is now
+   empty and Prettier still accepts all three files byte-for-byte.
+2. `CHANGELOG.md` gained an `Unreleased` entry for durable goals, the reviewed pidfd
+   ownership helper and their Linux, Bubblewrap, `util-linux` and C-toolchain
+   requirements, and for the durability adversarial harness. The version stays
+   1.0.0 and neither `package.json` nor `package-lock.json` changed.
+3. `MATRIX.md` gained a "Durable goal process ownership and test containment"
+   section and a runtime-map row, and `README.md` gained a "What the goal sandbox
+   does and does not contain" section and a limitation bullet. Both state the live
+   filesystem and host-network boundary, the credential exposure, and the required
+   trust and approval, and both point at the open contract discrepancy.
+4. `docs/next-phase/decisions/DUR-001.md` gained the dated review addendum described
+   in section 14.5.
+
+### 14.8 Durability verification versus live-provider capability
+
+This candidate establishes durability verification only: that the durable-goal
+runtime, store, executor, recovery path and ownership boundary behave as
+reviewed, that the QA-101 adversarial matrix passes 20/20 on both runtimes,
+and that the delivery gate passes on Node 22 and Node 24 in hosted CI.
+
+It establishes no live-provider capability. The hosted run and the default
+suite are network-free and use no real credentials. Provider availability,
+model naming, pricing, context limits, tool-call support, latency and response
+quality were not verified, and the opt-in live provider evaluation remains
+unevaluable on a hosted runner because it requires Linux Yama
+`kernel.yama.ptrace_scope=2` or `3` and an untraced evaluator. The provider
+phase's own residual findings (F-1, F-2, F-3, F-4 in `docs/next-phase/STATUS.md`)
+are untouched by this release.
+
+### 14.9 Unresolved decisions and exact next action
+
+The release stays **BLOCKED**. Two things are still required, and they are
+independent of each other:
+
+1. **Independent security review of the DUR-001 contract repair (section 14.6).**
+   **Closed on 2026-11-12.** The focused repair review closed the two runtime
+   blockers in its reviewed scope and its candidate-record closure closed the
+   manifest correction; every finding of that review is closed, and the repair
+   is **ACCEPTED** against the exact candidate digests above — the DUR-005
+   29-file, DUR-006 14-file and integrated 45-file candidate record. The
+   decision record's contract text is unchanged.
+2. **Exact-candidate hosted CI for the patched and repaired candidate.** The
+   repair changes runtime files, so the test, coverage, evaluation, sandbox,
+   smoke, bench, package and audit evidence must be re-established by the hosted
+   matrix for the new head. Run 42871859453 covers `b7966a0` exactly and is not
+   evidence for this candidate. **This is the one remaining gate.** It is not an
+   acceptance review and no further review is required for the repair; the
+   candidate-record correction changed no runtime file, so no runtime suite was
+   rerun for it and the local evidence above still covers the candidate.
+
+So the next action is: push the accepted candidate to `matrix/int101-hosted-ci`
+so the hosted matrix can be re-run for the resulting head. The verdict can only
+move to READY when that hosted run passes for the exact committed candidate.
+Tagging, publication and deployment remain separate decisions that this review
+does not authorize.

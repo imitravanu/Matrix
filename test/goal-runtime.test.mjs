@@ -41,9 +41,13 @@ import {
 import { inspectTestPlan } from "../lib/test-policy.mjs";
 import { withWorkspaceWriteLock } from "../lib/workspace.mjs";
 import { withGoalLock } from "../lib/goal-lock.mjs";
-import { createContainmentProcessRunner } from "../lib/goal-containment.mjs";
+import {
+  createContainmentProcessRunner,
+  createGoalTestIsolation,
+} from "../lib/goal-containment.mjs";
+import { cleanupWorkspaceSnapshot, createWorkspaceSnapshot } from "../lib/linux-snapshot.mjs";
 
-const linux = { skip: process.platform !== "linux" };
+const linux = { skip: process.platform !== "linux", timeout: 60_000 };
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const DRIVER = readFileSync(
   join(PACKAGE_ROOT, "docs", "next-phase", "fixtures", "dur005-driver.mjs"),
@@ -1693,6 +1697,28 @@ setInterval(()=>{},1000);`;
   },
 );
 
+/**
+ * A disposable-snapshot isolation for the direct containment-runner tests. The
+ * test owns the snapshot, so it can inspect what the isolated command wrote
+ * without the live workspace ever seeing it.
+ */
+function goalIsolation(t, workspace) {
+  const snapshot = createWorkspaceSnapshot(workspace, { matrixHome: null });
+  t.after(() => cleanupWorkspaceSnapshot(snapshot));
+  const isolation = async ({ file, cwd, env, gateRoot }) => {
+    const built = createGoalTestIsolation({
+      workspace,
+      cwd,
+      executable: file,
+      gateRoot,
+      snapshot,
+      env,
+    });
+    return { bwrapArgs: built.bwrapArgs, gateMount: built.gateMount };
+  };
+  return { isolation, snapshot };
+}
+
 test(
   "cancelling a contained run kills its detached descendant before returning",
   linux,
@@ -1717,9 +1743,11 @@ setInterval(()=>{},1000);`;
     const ownership = createExecutionOwnership({ home, helperPath: helper });
     const operationId = newGoalId("operation");
     const attemptId = newGoalId("attempt");
+    const { isolation: isolationFactory, snapshot } = goalIsolation(t, workspace);
     const runner = createContainmentProcessRunner({
       ownership,
       gateRoot: join(home, "containment"),
+      isolation: isolationFactory,
       onPin: (containment) =>
         ownership.recordDispatch({
           operationId,
@@ -1747,9 +1775,18 @@ setInterval(()=>{},1000);`;
       }
       throw new Error(`timed out waiting for ${label}`);
     };
+    // The isolated command writes inside the disposable snapshot, never in the
+    // live workspace.
     await waitFor(
-      () => existsSync(parentMarker) && existsSync(childMarker),
+      () =>
+        existsSync(join(snapshot.workspacePath, "cancel-parent.pid")) &&
+        existsSync(join(snapshot.workspacePath, "cancel-child.pid")),
       "the contained tree to start",
+    );
+    assert.equal(
+      existsSync(parentMarker),
+      false,
+      "the isolated command must not write to the live workspace",
     );
     const [record] = readOwnershipRecords(home);
     assert.ok(record?.namespace, "the dispatch must record its PID namespace");
@@ -1804,9 +1841,11 @@ setTimeout(()=>process.exit(1),10000);`;
     const ownership = createExecutionOwnership({ home, helperPath: helper });
     const operationId = newGoalId("operation");
     const attemptId = newGoalId("attempt");
+    const { isolation: isolationFactory, snapshot } = goalIsolation(t, workspace);
     const runner = createContainmentProcessRunner({
       ownership,
       gateRoot: join(home, "containment"),
+      isolation: isolationFactory,
       onPin: (containment) =>
         ownership.recordDispatch({
           operationId,
@@ -1826,7 +1865,15 @@ setTimeout(()=>process.exit(1),10000);`;
     });
     assert.equal(result.ok, true, JSON.stringify(result));
     assert.equal(result.code, 0);
-    assert.ok(existsSync(childMarker), "the detached child must have started");
+    assert.ok(
+      existsSync(join(snapshot.workspacePath, "orphan-child.pid")),
+      "the detached child must have started inside the disposable snapshot",
+    );
+    assert.equal(
+      existsSync(childMarker),
+      false,
+      "the isolated command must not write to the live workspace",
+    );
     const [record] = readOwnershipRecords(home);
     assert.ok(record?.namespace, "the dispatch must record its PID namespace");
     // The run has finished, so this namespace cannot be pinned while alive.
@@ -2219,12 +2266,27 @@ test(
       stdio: ["ignore", "pipe", "pipe"],
     });
     driver.stdout.resume();
+    // The owned test runs in a disposable snapshot, so the host cannot observe
+    // its files. The namespace membership is the observable instead: the tree is
+    // the namespace init, the guardian, the test command, its child and the
+    // grandchild.
+    const expectedTreeDepth = 5;
     const readyDeadline = Date.now() + 20_000;
+    let members = [];
     while (Date.now() < readyDeadline) {
-      if (existsSync(recordsBase + ".grand")) break;
+      const observed = readOwnershipRecords(home);
+      if (observed.length >= 1 && observed[0].namespace) {
+        members = namespaceLiveMembers(observed[0].namespace);
+        if (members.length >= expectedTreeDepth) break;
+      }
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
-    assert.ok(existsSync(recordsBase + ".grand"), "the owned test must reach its grandchild");
+    assert.ok(members.length >= expectedTreeDepth, "the owned test must reach its grandchild");
+    assert.equal(
+      existsSync(recordsBase + ".grand"),
+      false,
+      "the isolated test must not write to the live workspace",
+    );
     const firstRecords = readOwnershipRecords(home);
     assert.equal(firstRecords.length, 1, "one dispatch record must exist before the crash");
     const firstRecord = firstRecords[0];

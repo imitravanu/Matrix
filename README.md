@@ -298,6 +298,55 @@ List and inspect read state without starting an attempt. When the remaining
 criteria require human review, resume in a terminal to record a decision
 against the current tracked evidence. The decision survives a restart.
 
+### What the goal sandbox does and does not contain
+
+A goal owns its workspace while the attempt runs. Matrix proves that nothing it
+started is still running: the goal's test command runs inside a Bubblewrap PID
+namespace, the host pins the exact namespace and process identity before the
+command is allowed to start, and a test command that cannot be proven torn down
+leaves a durable block that every later resume refuses. That is **process
+ownership**.
+
+The approved test command itself does **not** run on your files. It runs in a
+**disposable snapshot** of the goal workspace: a read-only minimal root, the
+snapshot bound at the workspace path, a **new empty network namespace** and a
+**cleared environment**. Every write the test makes is absorbed by that
+snapshot and discarded when the attempt ends, so a test never modifies the live
+workspace, never reaches the rest of your filesystem and never reaches the
+host network.
+
+**Credential exposure.** The isolated root carries no `/home`, `/root` or
+`/var`, so host credential files such as `~/.matrix/credentials.json` cannot
+be opened from the test at all. Only provider environment variable _names_ are
+stored in Matrix's own configuration; the values live in the environment or in
+`credentials.json` and are not reachable from the isolated test.
+
+**Evidence freshness.** A goal's test evidence certifies the exact inputs the
+approved test ran against. The disposable snapshot exposes the whole workspace
+to the test, so the identity covers the whole workspace: every file's contents,
+every directory listing, every entry type, the permission bits that decide
+whether a file can be executed or a directory listed, and every symbolic-link
+target, using the snapshot's own exclusion rules and the same bounded
+no-follow traversal. A change, an addition, a deletion, a permission change or
+a retargeted link inside that boundary stops the goal instead of letting it
+complete on stale evidence. An input that cannot be read or hashed, or coverage
+that exceeds the supported bounded budgets, refuses verification rather than
+accepting partial evidence.
+
+**Required trust and approval.** Running a goal's tests needs the ordinary
+repository and test-plan trust decision, an explicit approval of the exact test
+plan, and a separate `--allow-tests` decision for headless runs. `--yes`
+authorizes edits only and never authorizes tests. Treat the test plan of a goal
+the way you would treat any script you are about to run with your own account.
+
+The durable-snapshot contract recorded in
+`docs/next-phase/decisions/DUR-001.md` is implemented by that boundary. The
+contract repair is submitted for independent security review and is not
+accepted yet, and this release is blocked on that review and on a hosted CI run
+for the exact candidate. See
+[MATRIX.md](MATRIX.md#durable-goal-process-ownership-and-test-containment) for
+the full architecture description.
+
 ## Keys
 
 | Key                    | Action                                                                                 |
@@ -478,4 +527,8 @@ release candidate still requires a fresh Node 22/24 CI pass.
 - Sandboxed commands are Linux/bubblewrap-only. Namespaces and mounts are used, not seccomp or a VM;
   resource limits do not provide aggregate post-exec quotas, and secret-name filtering is not content
   classification. Snapshot writes are always discarded.
+- A durable goal's approved test command runs in a disposable workspace snapshot with no network and
+  a cleared environment, in the same isolation layout as `run_sandboxed_command`. The boundary is
+  submitted for independent security review. See
+  [What the goal sandbox does and does not contain](#what-the-goal-sandbox-does-and-does-not-contain).
 - The demo is intentionally buggy; its initial pytest result is expected to fail.

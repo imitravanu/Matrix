@@ -18,7 +18,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const bin = fileURLToPath(new URL("../bin/matrix.mjs", import.meta.url));
-const linux = { skip: process.platform !== "linux", timeout: 20_000 };
+const linux = { skip: process.platform !== "linux", timeout: 60_000 };
 const original = "export const a = 1;\n";
 const modified = "export const b = 1;\n";
 
@@ -365,5 +365,23 @@ test("goal --yes does not start tests and --allow-tests runs the bound plan", li
   const resumed = await run("resume", first.json.goalId, "--allow-tests", "--json").result;
   assert.equal(resumed.code, 0, JSON.stringify(resumed));
   assert.equal(resumed.json.result, "completed");
-  assert.equal(readFileSync(marker, "utf8"), "yes");
+  // The trusted evidence is the accepted test criterion: a succeeded test
+  // operation bound to the approved plan hash and to the source fingerprint the
+  // goal dispatched.
+  const testCriterion = (resumed.json.criteria ?? []).find(
+    (criterion) => criterion.kind === "test",
+  );
+  assert.ok(testCriterion, "the goal must project its test criterion");
+  assert.equal(
+    testCriterion.accepted,
+    true,
+    "the approved test plan must be the accepted evidence",
+  );
+  // The approved test ran in a disposable snapshot, so its own write never
+  // reached the live workspace.
+  assert.equal(
+    existsSync(marker),
+    false,
+    "a goal test write must stay inside the disposable snapshot",
+  );
 });

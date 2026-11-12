@@ -1,9 +1,9 @@
 # Independent Review — DUR-001 (Goal Contracts, State Machine, and Linux Writer-Lock Spike)
 
-**Review Date:** 2026-11-05  
-**Review Target:** DUR-001 under `docs/next-phase/`  
-**Reviewer:** Independent audit agent (fresh review context).  
-**Repository:** `/home/mitravanu/matrix`  
+**Review Date:** 2026-11-05\
+**Review Target:** DUR-001 under `docs/next-phase/`\
+**Reviewer:** Independent audit agent (fresh review context).\
+**Repository:** `/home/mitravanu/matrix`\
 **Governing Documents:** `AGENTS.md`, `docs/next-phase/REVIEW_METHOD.md`, `docs/next-phase/ARCHITECTURE.md`, `docs/next-phase/AUDIT.md`, `docs/next-phase/STATUS.md`, and `docs/next-phase/decisions/DUR-001.md`.
 
 No runtime code, host settings, or Git history were modified. The only repository file added by this review is this report document under `docs/next-phase/reports/`.
@@ -27,15 +27,15 @@ No runtime code, host settings, or Git history were modified. The only repositor
   - `test/provider-eval.test.mjs` (SHA-256: `1660c607527d18ee6063bd2515317bf9a7b49998e3282187da3bf178e893a3ab`)
 - **Git Patch Hash (`git diff | sha256sum`):** `20a377373e1139b29c10d0d27d0eb3e70cf5af7e52f647b6534de1c9d478f1a9`
 - **DUR-001 Untracked Candidate Artifacts:**
-  - `lib/goal-contracts.mjs` (1,170 lines):  
+  - `lib/goal-contracts.mjs` (1,170 lines):\
     SHA-256: `40c1a9fd7176809887c2f1813fcae1158e65878a4180fbc4e5f6768711568106`
-  - `test/goal-contracts.test.mjs` (1,222 lines):  
+  - `test/goal-contracts.test.mjs` (1,222 lines):\
     SHA-256: `2a367c17711339354ac84460011604b0003a891b59eb28934076c8c2ccba73fe`
-  - `test/goal-lock-spike.test.mjs` (2,151 lines):  
+  - `test/goal-lock-spike.test.mjs` (2,151 lines):\
     SHA-256: `f21ccf126146403c8e9295bbdf5001327ea8a29aa425eac7f303f07c83d9c02b`
-  - `docs/next-phase/decisions/DUR-001.md` (838 lines):  
+  - `docs/next-phase/decisions/DUR-001.md` (838 lines):\
     SHA-256: `d7258e59eb70cdec1297f28ba0ac4e3732f4b3e60ad6e76300ce284c9b9a3ff7`
-- **4-File DUR-001 Candidate Aggregate Digest:**  
+- **4-File DUR-001 Candidate Aggregate Digest:**\
   `sha256(concat(sorted(path, NUL, bytes)))` = `12d2ddd9f93349e67086fc6c5dfd119780ee41d3c0d9d44837ce492fda745aa7`
 
 ---

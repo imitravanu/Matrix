@@ -1,9 +1,9 @@
 # Independent Re-Review — DUR-001 (Goal Contracts, State Machine, and Linux Writer-Lock Spike)
 
-**Review Date:** 2026-11-05  
-**Review Target:** DUR-001 under `docs/next-phase/`  
-**Reviewer:** Independent audit agent (fresh review context).  
-**Repository:** `/home/mitravanu/matrix`  
+**Review Date:** 2026-11-05\
+**Review Target:** DUR-001 under `docs/next-phase/`\
+**Reviewer:** Independent audit agent (fresh review context).\
+**Repository:** `/home/mitravanu/matrix`\
 **Governing Documents:** `AGENTS.md`, `docs/next-phase/REVIEW_METHOD.md`, `docs/next-phase/AGENT_TASKS.md`, `docs/next-phase/ARCHITECTURE.md`, `docs/next-phase/AUDIT.md`, `docs/next-phase/STATUS.md`, `docs/next-phase/decisions/DUR-001.md`, and `docs/next-phase/reports/2026-11-05-dur001-independent-review.md`.
 
 No runtime code, host settings, or Git history were modified. The only repository file added by this review is this report document under `docs/next-phase/reports/`.
@@ -33,19 +33,19 @@ No runtime code, host settings, or Git history were modified. The only repositor
 
 The 5 candidate files for DUR-001 and their individual SHA-256 digests:
 
-- `lib/goal-contracts.mjs` (41,638 bytes, 1,170 lines):  
+- `lib/goal-contracts.mjs` (41,638 bytes, 1,170 lines):\
   `40c1a9fd7176809887c2f1813fcae1158e65878a4180fbc4e5f6768711568106`
-- `lib/model-agent.mjs` (86,498 bytes, 2,239 lines):  
+- `lib/model-agent.mjs` (86,498 bytes, 2,239 lines):\
   `30eb59024d444abc22d27b145fca5a76634b6fc6516ff659ac53f521028766f7`
-- `lib/workspace.mjs` (5,045 bytes, 162 lines):  
+- `lib/workspace.mjs` (5,045 bytes, 162 lines):\
   `10255e230553456e3d87adbd69f74926b3b512bb424e989d30dc05cf9d9ac128`
-- `test/goal-contracts.test.mjs` (41,430 bytes, 1,222 lines):  
+- `test/goal-contracts.test.mjs` (41,430 bytes, 1,222 lines):\
   `2a367c17711339354ac84460011604b0003a891b59eb28934076c8c2ccba73fe`
-- `test/goal-lock-spike.test.mjs` (107,055 bytes, 2,921 lines):  
+- `test/goal-lock-spike.test.mjs` (107,055 bytes, 2,921 lines):\
   `8e5eca4e60916d2f58821e8be7c2a13120d486ba4f2f827500c727d74ccbeeac`
 
-**5-File Candidate Aggregate SHA-256:**  
-`sha256(concat(sorted(path, NUL, bytes)))` =  
+**5-File Candidate Aggregate SHA-256:**\
+`sha256(concat(sorted(path, NUL, bytes)))` =\
 `71f7604be8181d45308d2602fc339bfff01a1134f668023de0416f55475c8528`
 
 **Verification:** This aggregate digest matches **byte-for-byte** the candidate fingerprint recorded in the latest "Model-agent write lock lifetime repair" section of `docs/next-phase/decisions/DUR-001.md` (lines 1076–1079).

@@ -15,6 +15,7 @@ export const COVERAGE_THRESHOLDS = Object.freeze({
   "lib/goal-operations.mjs": { line: 90, branch: 75, functions: 95 },
   "lib/goal-budget.mjs": { line: 85, branch: 75, functions: 90 },
   "lib/goal-context.mjs": { line: 90, branch: 75, functions: 95 },
+  "lib/goal-source-manifest.mjs": { line: 80, branch: 55, functions: 90 },
   "lib/goal-lock.mjs": { line: 90, branch: 70, functions: 95 },
   "lib/command-policy.mjs": { line: 90, branch: 80, functions: 100 },
   "lib/command-execution.mjs": { line: 90, branch: 85, functions: 100 },

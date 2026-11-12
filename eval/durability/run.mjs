@@ -125,6 +125,32 @@ function namespaceInodeOf(pid) {
   }
 }
 
+/**
+ * The live members of one PID namespace, with their namespace-local pids. The
+ * approved goal test runs in a disposable snapshot, so the harness cannot read
+ * the files the test wrote; namespace membership is the host-observable
+ * equivalent.
+ */
+function namespaceMembers(inode) {
+  const members = [];
+  for (const name of readdirSync("/proc")) {
+    if (!/^[0-9]+$/.test(name)) continue;
+    const pid = Number(name);
+    if (namespaceInodeOf(pid) !== inode) continue;
+    let status;
+    try {
+      status = readFileSync(`/proc/${pid}/status`, "utf8");
+    } catch {
+      continue;
+    }
+    const match = /^NSpid:\s*(.+)$/m.exec(status);
+    if (!match) continue;
+    const nsPids = match[1].trim().split(/\s+/).map(Number);
+    members.push({ hostPid: pid, localPid: nsPids[nsPids.length - 1] });
+  }
+  return members;
+}
+
 function hostPidInNamespace(inode, localPid) {
   for (const name of readdirSync("/proc")) {
     if (!/^[0-9]+$/.test(name)) continue;
@@ -1035,15 +1061,11 @@ await recordCase("CR-08", "Kill during tests with child/grandchild processes", a
   );
 
   const barrierFile = join(ws, "grandchild-ready.txt");
-  const rerunMarker = join(ws, "rerun-marker.txt");
-  const childPidFile = join(ws, "child.pid");
-  const grandchildPidFile = join(ws, "grandchild.pid");
 
   writeFileSync(
     join(ws, "grandchild.mjs"),
     `
 import { writeFileSync } from "node:fs";
-writeFileSync(${JSON.stringify(grandchildPidFile)}, String(process.pid));
 writeFileSync(${JSON.stringify(barrierFile)}, "ready");
 setInterval(() => {}, 1000);
 `,
@@ -1054,7 +1076,6 @@ setInterval(() => {}, 1000);
     `
 import { spawn } from "node:child_process";
 import { writeFileSync } from "node:fs";
-writeFileSync(${JSON.stringify(childPidFile)}, String(process.pid));
 const g = spawn(process.execPath, ["grandchild.mjs"], { stdio: "inherit" });
 setInterval(() => {}, 1000);
 `,
@@ -1067,9 +1088,6 @@ setInterval(() => {}, 1000);
 import { spawn } from "node:child_process";
 import { writeFileSync, appendFileSync, existsSync } from "node:fs";
 appendFileSync(${JSON.stringify(runnerLog)}, "runner invoked: " + Date.now() + " ppid=" + process.ppid + " argv=" + JSON.stringify(process.argv) + " barrierExists=" + existsSync(${JSON.stringify(barrierFile)}) + "\\n");
-if (existsSync(${JSON.stringify(barrierFile)})) {
-  writeFileSync(${JSON.stringify(rerunMarker)}, "duplicate-test-ran");
-}
 const c = spawn(process.execPath, ["child.mjs"], { stdio: "inherit" });
 setInterval(() => {}, 1000);
 `,
@@ -1148,19 +1166,34 @@ setInterval(() => {}, 1000);
     { cwd: ws, env, stdio: ["ignore", "pipe", "pipe"] },
   );
 
+  const ownershipDir = join(home, "ownership");
   const start = Date.now();
-  while (!existsSync(barrierFile) && Date.now() - start < 15_000) {
+  let inode = null;
+  let members = [];
+  while (Date.now() - start < 20_000) {
+    let recFiles;
+    try {
+      recFiles = readdirSync(ownershipDir);
+    } catch {
+      recFiles = [];
+    }
+    for (const name of recFiles) {
+      const rec = JSON.parse(readFileSync(join(ownershipDir, name), "utf8"));
+      const observed = rec.namespace?.inode;
+      if (!observed) continue;
+      inode = observed;
+      members = namespaceMembers(inode);
+      // namespace init, guardian, test command, child, grandchild
+      if (members.length >= 5) break;
+    }
+    if (members.length >= 5) break;
     await new Promise((r) => setTimeout(r, 50));
   }
-  const ownershipDir = join(home, "ownership");
-  const recFiles = readdirSync(ownershipDir);
-  assert.ok(recFiles.length > 0, "ownership record must exist for dispatched test");
-  const rec = JSON.parse(readFileSync(join(ownershipDir, recFiles[0]), "utf8"));
-  const inode = rec.namespace?.inode;
   assert.ok(inode, "PID namespace inode must be recorded");
-
-  const localChildPid = Number(readFileSync(childPidFile, "utf8"));
-  const localGrandchildPid = Number(readFileSync(grandchildPidFile, "utf8"));
+  assert.ok(members.length >= 5, "the owned test must reach its grandchild");
+  const ordered = [...members].sort((left, right) => left.localPid - right.localPid);
+  const localChildPid = ordered[ordered.length - 2].localPid;
+  const localGrandchildPid = ordered[ordered.length - 1].localPid;
   const hostChildPid = hostPidInNamespace(inode, localChildPid);
   const hostGrandchildPid = hostPidInNamespace(inode, localGrandchildPid);
   assert.ok(hostChildPid, "host child PID must be identified via namespace status");
@@ -1258,11 +1291,14 @@ setInterval(() => {}, 1000);
     false,
     "no false test success on resume after interrupted attempt",
   );
-  assert.equal(
-    existsSync(rerunMarker),
-    false,
-    "no duplicate test execution without fresh authority",
+  // The test ran inside a disposable snapshot, so the host observes the
+  // execution record instead of the test's own marker file: exactly one test
+  // intent may exist for the goal, with no duplicate dispatch.
+  const journal = createGoalStore(home).readJournal(goalId);
+  const testIntents = journal.filter(
+    (record) => record.kind === "intent" && record.payload?.kind === "test",
   );
+  assert.equal(testIntents.length, 1, "no duplicate test execution without fresh authority");
 
   server.closeAllConnections();
   await new Promise((r) => server.close(r));
