@@ -341,9 +341,8 @@ the way you would treat any script you are about to run with your own account.
 
 The durable-snapshot contract recorded in
 `docs/next-phase/decisions/DUR-001.md` is implemented by that boundary. The
-contract repair is submitted for independent security review and is not
-accepted yet, and this release is blocked on that review and on a hosted CI run
-for the exact candidate. See
+contract repair was accepted by independent review on 2026-11-12, and this
+release is blocked only on a hosted CI run for the exact candidate. See
 [MATRIX.md](MATRIX.md#durable-goal-process-ownership-and-test-containment) for
 the full architecture description.
 

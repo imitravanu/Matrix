@@ -1280,6 +1280,46 @@ function forgeLeaseOwner(checkpointPath, owner) {
   );
 }
 
+/**
+ * Wait until the live owner has dispatched the provider and has stopped
+ * rewriting the checkpoint.
+ *
+ * The owner writes the checkpoint when it acquires the lease and again when it
+ * dispatches the provider. A lease forged before those writes finish can be
+ * replaced by a legitimate write between the forge and the control request,
+ * and the control request is then answered by the real, live owner instead of
+ * being refused. The dispatch record is the owner's own signal that it is
+ * blocked on the provider, and the checkpoint counts as settled only once it
+ * has stopped changing.
+ */
+function waitForOwnerSettled(home, goalId, checkpointPath, timeoutMs = 10_000) {
+  const store = createGoalStore(home);
+  const deadline = Date.now() + timeoutMs;
+  let dispatched = false;
+  let last = null;
+  let settledSince = Date.now();
+  for (;;) {
+    try {
+      if (!dispatched) {
+        dispatched = store
+          .readJournal(goalId)
+          .some((record) => record.kind === "dispatch" && record.payload?.kind === "provider");
+      }
+      const current = hash(readFileSync(checkpointPath));
+      if (current !== last) {
+        last = current;
+        settledSince = Date.now();
+      } else if (dispatched && Date.now() - settledSince >= 50) {
+        return;
+      }
+    } catch {
+      // not yet visible
+    }
+    if (Date.now() > deadline) throw new Error("timed out waiting for the owner to settle");
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+  }
+}
+
 test(
   "a lease naming a live but unrelated process still refuses control with exit 2",
   linux,
@@ -1298,6 +1338,10 @@ test(
     // same stale-authority path must apply (the alternate failure family).
     assert.equal(lease.owner.pid !== process.pid, true, "fixture owner pid is the test process");
     const checkpoint = join(home, "goals", goalId, "checkpoint.json");
+    // The owner is still live and rewrites the checkpoint when it dispatches
+    // the provider. Forge only once it has settled, so the forged lease is
+    // the one the control command below actually reads.
+    waitForOwnerSettled(home, goalId, checkpoint);
     forgeLeaseOwner(checkpoint, {
       pid: process.pid,
       startTime: "1",

@@ -16,7 +16,7 @@
 - **Chief disposition on 2026-11-10** — **ACCEPTED** for the local durability integration against the candidate in section 12. The C1 repair changes the test oracle.
 - **Hosted CI on 2026-11-10** — **PASSED** on Node 22 and Node 24 in [run 42867616263](https://github.com/imitravanu/Matrix/actions/runs/42867616263) for branch `matrix/int101-hosted-ci` at `46ed6ea`. See section 13.
 - **Release readiness on 2026-11-11** — **BLOCKED** for candidate `b7966a0` whose hosted matrix is [run 42871859453](https://github.com/imitravanu/Matrix/actions/runs/42871859453). Every verification, safety and packaging gate passes. A documentation patch closed the release-readiness findings and revised the DUR-006 and integrated manifests, but the DUR-001 durable-snapshot contract is still unmet pending chief disposition, and the patched candidate still needs its own hosted run. See section 14.
-- **Candidate record on 2026-11-12** — the current candidate is the DUR-005 29-file `e239d002…`, DUR-006 14-file `fe95bc4c…` and integrated 45-file `f46b90b4…` record in section 14.6. The integrated manifest was corrected from the 43-file list to 45 files by restoring `package.json` and `eval/durability/run.mjs`. The correction is metadata only and changed no runtime file. The DUR-001 contract repair is **ACCEPTED** against that candidate. The release stays **BLOCKED** on a hosted CI run for the exact committed candidate; run 42871859453 does not cover this tree.
+- **Candidate record on 2026-11-12** — the current candidate is the DUR-005 29-file `e239d002…`, DUR-006 14-file `7537f64f…` and integrated 45-file `0ae46f49…` record in section 14.6. The integrated manifest was corrected from the 43-file list to 45 files by restoring `package.json` and `eval/durability/run.mjs`, and three non-runtime members (`test/goal-cli.test.mjs`, `MATRIX.md` and `README.md`) changed in the same pass that fixed the hosted-CI failure. The DUR-001 contract repair is **ACCEPTED** against that candidate. The release stays **BLOCKED** on a hosted CI run for the exact committed candidate; run 42871859453 does not cover this tree.
 - **Release status** — commit and push were authorized and performed; tag, publication and deployment were not, and remain separate decisions. Live capability evaluation remains NOT EVALUATED.
 
 The earlier implementation results in sections 1–5 and 7 describe the original
@@ -997,8 +997,8 @@ accepted, and the release stays BLOCKED.**
 | Manifest         | Members                                                | SHA-256                                                            |
 | ---------------- | ------------------------------------------------------ | ------------------------------------------------------------------ |
 | DUR-005          | 29 (`docs/next-phase/fixtures/dur005-members.txt`)     | `e239d002633ca94134ed18e170d8912304c69c1b6208499edf22e929b2ca5c68` |
-| DUR-006          | 14                                                     | `fe95bc4cee570936f9e6c9567e4bf3f94a69c2e4cbe2edfdbaf3d4356475bf1a` |
-| Integrated union | 45 (`docs/next-phase/fixtures/integrated-members.txt`) | `f46b90b424625f804d0e959dcb43151cd30e92b15f0f3818a5bb0b02797f7c28` |
+| DUR-006          | 14                                                     | `7537f64fdf6e1b906b614a6fe2793bfac9a6e2d498c0ffea6b5e9c8ec14e41b0` |
+| Integrated union | 45 (`docs/next-phase/fixtures/integrated-members.txt`) | `0ae46f493217f214732ad0a67a7cb494ad0db2254ea4b0b77533e76285746785` |
 
 > The numbers in the tables below remain the first-submission record.
 >
@@ -1009,7 +1009,7 @@ accepted, and the release stays BLOCKED.**
 > `b7966a076fab79724e56ba79afb62c1ebdda0ed3` on branch `matrix/int101-hosted-ci`
 > plus the submitted working-tree repair, with the integrated 45-file candidate
 > at
-> `f46b90b424625f804d0e959dcb43151cd30e92b15f0f3818a5bb0b02797f7c28`. The
+> `0ae46f493217f214732ad0a67a7cb494ad0db2254ea4b0b77533e76285746785`. The
 > accepted behavior is the disposable-snapshot test boundary and its source
 > identity, which implements disposition 1 of section 14.5; the contract text in
 > the decision record is unchanged and is not amended by this acceptance. The
@@ -1023,6 +1023,30 @@ accepted, and the release stays BLOCKED.**
 > log-verified in that turn. **The release stays BLOCKED** on the exact-candidate
 > hosted CI run described in section 14.9; acceptance of the repair does not
 > move it to READY.
+>
+> **Update of 2026-11-12 (hosted CI failure, diagnosis and fix).** The hosted
+> matrix for the accepted candidate failed on Node 24 in one test, `a lease
+naming a live but unrelated process still refuses control with exit 2`, with
+> `0 !== 2`. The diagnosis is a **pre-existing race in that test, not a
+> regression from the DUR-001 repair**: the live goal owner writes the
+> checkpoint when it acquires the lease and again when it dispatches the
+> provider, and the test forged the lease as soon as the lease became visible,
+> so the owner's own legitimate write could land between the forge and the
+> control request. The forged lease was then replaced by the real, live lease
+> and `goal pause` and `goal cancel` correctly succeeded with exit 0 instead of
+> being refused. The owner's write timeline is identical at the pre-repair
+> commit `b7966a0`, and the symptom was reproduced deterministically by
+> restoring the owner's write between the forge and the control request. The
+> fix makes the test wait until the owner has journalled the provider dispatch
+> and the checkpoint has stopped changing before it forges the lease; the
+> assertion is unchanged. The packaged `MATRIX.md` and `README.md` were
+> corrected in the same pass because their contract-status paragraphs still
+> described the repair as submitted and not accepted. All three changed files are
+> non-runtime members, so the
+> DUR-006 and integrated digests in the table above are the updated candidate's;
+> the DUR-005 runtime candidate is unchanged at `e239d002…`, and the
+> previously recorded `fe95bc4c…` and `f46b90b4…` remain the identities of the
+> candidate the independent review accepted.
 
 The repair implements disposition 1 of section 14.5: the durable-goal test path
 now runs in the same isolation layout as `run_sandboxed_command`.

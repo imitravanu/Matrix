@@ -602,18 +602,14 @@ the weaker side by construction.
 **Contract status.** `docs/next-phase/decisions/DUR-001.md` recorded the design
 contract that a surviving job may write only to a disposable snapshot, and that
 detachable work is exposed only disposable snapshots. The 2026-11-11 contract
-repair implements that contract with the boundary described above. The contract
-text is unchanged, and the repair is **submitted, not accepted**: an independent
-security review must confirm the boundary and the source identity before the
-contract is treated as met. See the
-[review addendum to that decision record](docs/next-phase/decisions/DUR-001.md#2026-11-11-review-addendum-open-contract-discrepancy)
+repair implements that contract with the boundary described above, and the
+independent review of that repair accepted it on 2026-11-12. The contract text
+is unchanged. See the
+[acceptance addendum to that decision record](docs/next-phase/decisions/DUR-001.md#2026-11-12-acceptance-addendum-accepted)
 and [section 14 of the INT-101 integration report](docs/next-phase/reports/2026-11-09-int101-integration.md#146-dur-001-contract-repair-submitted).
-Documenting the implementation does not resolve it. The acceptable dispositions are
-to give the goal test path the same disposable, no-network snapshot boundary as
-`run_sandboxed_command`, or to amend the DUR-001 contract with an explicit,
-reviewed statement of the accepted live-filesystem and host-network boundary and its
-credential exposure. Until the chief records one of them, the discrepancy stays open
-and this release stays blocked.
+Accepting the repair is not the same as releasing this version: the internal
+release stays blocked until the hosted Node 22 and Node 24 matrix passes for the
+exact committed candidate.
 
 The opt-in provider evaluator executes its workspace tests in a Linux Bubblewrap snapshot and
 requires the sandbox probe to succeed before starting. Test trust and execution audits still cover
