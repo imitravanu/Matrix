@@ -16,7 +16,7 @@
 - **Chief disposition on 2026-11-10** — **ACCEPTED** for the local durability integration against the candidate in section 12. The C1 repair changes the test oracle.
 - **Hosted CI on 2026-11-10** — **PASSED** on Node 22 and Node 24 in [run 42867616263](https://github.com/imitravanu/Matrix/actions/runs/42867616263) for branch `matrix/int101-hosted-ci` at `46ed6ea`. See section 13.
 - **Release readiness on 2026-11-11** — **BLOCKED** for candidate `b7966a0` whose hosted matrix is [run 42871859453](https://github.com/imitravanu/Matrix/actions/runs/42871859453). Every verification, safety and packaging gate passes. A documentation patch closed the release-readiness findings and revised the DUR-006 and integrated manifests, but the DUR-001 durable-snapshot contract is still unmet pending chief disposition, and the patched candidate still needs its own hosted run. See section 14.
-- **Candidate record on 2026-11-12** — the current candidate is the DUR-005 29-file `e239d002…`, DUR-006 14-file `7537f64f…` and integrated 45-file `0ae46f49…` record in section 14.6. The integrated manifest was corrected from the 43-file list to 45 files by restoring `package.json` and `eval/durability/run.mjs`, and three non-runtime members (`test/goal-cli.test.mjs`, `MATRIX.md` and `README.md`) changed in the same pass that fixed the hosted-CI failure. The DUR-001 contract repair is **ACCEPTED** against that candidate. The release stays **BLOCKED** on a hosted CI run for the exact committed candidate; run 42871859453 does not cover this tree.
+- **Candidate record on 2026-11-12** — the current candidate is the DUR-005 29-file `e239d002…`, DUR-006 14-file `7537f64f…` and integrated 45-file `0ae46f49…` record in section 14.6. The integrated manifest was corrected from the 43-file list to 45 files by restoring `package.json` and `eval/durability/run.mjs`, and three non-runtime members (`test/goal-cli.test.mjs`, `MATRIX.md` and `README.md`) changed in the same pass that fixed the hosted-CI failure. The DUR-001 contract repair is **ACCEPTED** against that candidate. The hosted CI gate is closed: [run 43222077751](https://github.com/imitravanu/Matrix/actions/runs/43222077751) covers the committed candidate `7e1eac66019712bdade5a5d62acf9e4e2d42fb2a` exactly and concluded **success** on Node 22 and Node 24 with every step green, so REL-001 is **READY** for that candidate. Run 42871859453 covers `b7966a0` and does not cover this tree. Tagging, publication and deployment remain separate decisions.
 - **Release status** — commit and push were authorized and performed; tag, publication and deployment were not, and remain separate decisions. Live capability evaluation remains NOT EVALUATED.
 
 The earlier implementation results in sections 1–5 and 7 describe the original
@@ -1201,8 +1201,8 @@ are untouched by this release.
 
 ### 14.9 Unresolved decisions and exact next action
 
-The release stays **BLOCKED**. Two things are still required, and they are
-independent of each other:
+The release was **BLOCKED** while two things were outstanding, and they were
+independent of each other. Both are now closed:
 
 1. **Independent security review of the DUR-001 contract repair (section 14.6).**
    **Closed on 2026-11-12.** The focused repair review closed the two runtime
@@ -1211,17 +1211,18 @@ independent of each other:
    is **ACCEPTED** against the exact candidate digests above — the DUR-005
    29-file, DUR-006 14-file and integrated 45-file candidate record. The
    decision record's contract text is unchanged.
-2. **Exact-candidate hosted CI for the patched and repaired candidate.** The
-   repair changes runtime files, so the test, coverage, evaluation, sandbox,
-   smoke, bench, package and audit evidence must be re-established by the hosted
-   matrix for the new head. Run 42871859453 covers `b7966a0` exactly and is not
-   evidence for this candidate. **This is the one remaining gate.** It is not an
-   acceptance review and no further review is required for the repair; the
-   candidate-record correction changed no runtime file, so no runtime suite was
-   rerun for it and the local evidence above still covers the candidate.
+2. **Exact-candidate hosted CI for the patched and repaired candidate.**
+   **Closed on 2026-11-12.** The repair changes runtime files, so the test,
+   coverage, evaluation, sandbox, smoke, bench, package and audit evidence had
+   to be re-established by the hosted matrix for the new head. The candidate is
+   committed on `matrix/int101-hosted-ci` as `7e1eac66019712bdade5a5d62acf9e4e2d42fb2a` and pushed to `origin` at
+   the same commit; [run 43222077751](https://github.com/imitravanu/Matrix/actions/runs/43222077751) (run number 15, 2026-11-12T12:53:30Z to
+   12:58:31Z) reports `head_sha` byte-identical to that commit and concluded
+   **success** on both the Node 22 and the Node 24 job with every step green.
+   Run 42871859453 covers `b7966a0` exactly, predates this repair, and is not
+   evidence for this candidate.
 
-So the next action is: push the accepted candidate to `matrix/int101-hosted-ci`
-so the hosted matrix can be re-run for the resulting head. The verdict can only
-move to READY when that hosted run passes for the exact committed candidate.
-Tagging, publication and deployment remain separate decisions that this review
-does not authorize.
+So both requirements are closed and the release is **READY** for the committed
+candidate. The remaining decisions are the ones this review never authorized:
+tagging, publication and deployment. No tag was created, nothing was published
+and nothing was deployed.
